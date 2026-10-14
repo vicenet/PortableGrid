@@ -32,6 +32,10 @@
 
 ---
 
+<p align="center">
+  <img src=".github/assets/demo.gif" width="330" alt="PortableGrid panel cycling through column, modular, baseline, golden spiral, isometric and Instagram safe-zone grids">
+</p>
+
 **PortableGrid** is a free **Adobe Illustrator grid plugin** and **Photoshop guides extension**. Set up
 columns, rows, gutters and margins (or pick one of 33 presets, or build a harmonious grid from your text size),
 see a live preview, and draw the grid as guides, cells, lines or artboards. Then let it do the tedious part:
@@ -117,6 +121,16 @@ Platforms change their apps, so treat the zones as a close guide.
 - **Split into tiles** (Illustrator): cut artwork into clipped tiles, with gutters as gaps.
 - **Export tiles** as numbered PNG/JPEG files: perfect for **Instagram 3 × 3 profile grids** and **seamless carousels**.
 - **Lock rows to the baseline grid** so text lines up across every module.
+- **Drag to adjust**: drag the margins or a gutter in the live preview.
+- **Grids live in your document**: settings are saved with the file, each artboard can have its own grid,
+  and grids redraw themselves when you resize an artboard.
+- **One undo** removes a whole grid or layout.
+- **Your own content in layouts**: paste or load an article, pick a folder of images, or use a
+  [PortableStudio](https://github.com/vicenet/PortableStudio) brand's fonts, copy and photos. Text that doesn't fit
+  is flagged with a red +.
+- **Keyboard shortcuts** in the panel, plus Toggle grid, Snap and Grid check in Illustrator's File › Scripts menu.
+- **Share presets** with your team: export and import preset files.
+- **Update notice** when a new version is out (can be turned off).
 - **33 presets** for web, print, editorial, composition, drawing, creator and social layouts, plus your own saved presets.
 
 ## How it works
@@ -138,7 +152,8 @@ npm test
 npm run package                                                     # release builds in dist/
 ```
 
-Plain JavaScript (Adobe CEP panel) and ExtendScript, with no dependencies. The grid maths lives in
+Plain JavaScript (Adobe CEP panel) and ExtendScript, with no dependencies. See [docs/SIGNING.md](docs/SIGNING.md)
+for signed installers and [docs/ADOBE-EXCHANGE.md](docs/ADOBE-EXCHANGE.md) for the Adobe Exchange listing. The grid maths lives in
 [`core/grid.js`](core/grid.js) and is fully tested. Releases are built by GitHub Actions: pushing a `v*` tag
 builds the Windows `.exe` and macOS `.pkg`.
 
@@ -175,7 +190,7 @@ certificates yet. They're built by GitHub Actions from this public source code.
 
 ## Licence
 
-[GPL-3.0](LICENSE). Found a security problem? See [SECURITY.md](SECURITY.md). PortableGrid is an independent
+[GPL-3.0](LICENSE). [Privacy](PRIVACY.md): no account, no tracking. Found a security problem? See [SECURITY.md](SECURITY.md). PortableGrid is an independent
 project, not affiliated with Adobe. Illustrator and Photoshop are trademarks of Adobe Inc.
 
 Also by the same author: [**PortableStudio**](https://github.com/vicenet/PortableStudio), a free brand

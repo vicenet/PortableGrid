@@ -104,22 +104,22 @@
     function placeOverlay(d, path, name, opacity) {
         var file = new File(path);
         if (!file.exists) throw new Error('Overlay image missing: ' + path);
-        // No "missing colour profile" prompts for our own temporary file.
+        // File > Place Embedded, straight into this document (no second document, so it stays one
+        // History step). The PNG has the canvas size, so it lands exactly on the canvas.
         var dialogs = app.displayDialogs;
         app.displayDialogs = DialogModes.NO;
-        var src;
         try {
-            src = app.open(file);
+            var desc = new ActionDescriptor();
+            desc.putPath(charIDToTypeID('null'), file);
+            desc.putEnumerated(charIDToTypeID('FTcs'), charIDToTypeID('QCSt'), charIDToTypeID('Qcsa'));
+            executeAction(charIDToTypeID('Plc '), desc, DialogModes.NO);
         } finally {
             app.displayDialogs = dialogs;
         }
-        try {
-            src.activeLayer.duplicate(d, ElementPlacement.PLACEATBEGINNING);
-        } finally {
-            src.close(SaveOptions.DONOTSAVECHANGES);
-        }
-        app.activeDocument = d;
-        var layer = d.layers[0];
+        // Same size as the canvas, so Photoshop places it at 100 % (layer bounds only cover the
+        // drawn pixels, so they can't be used to check the scale).
+        var layer = d.activeLayer;
+        layer.rasterize(RasterizeType.ENTIRELAYER);
         layer.name = name;
         layer.opacity = opacity;
         return layer;
@@ -129,7 +129,18 @@
     //        style: { color, cellOpacity, lineOpacity }, overlayFile }
     // Baselines, drawing grids and composition lines arrive as one PNG (overlayFile).
     // Photoshop guides can't be told apart, so "replace" clears every guide in the document.
+    // Runs fn as a single History step, so one undo removes the whole grid.
+    function oneStep(name, fn, arg) {
+        PG._step = { fn: fn, arg: arg, result: null };
+        doc().suspendHistory(name, 'PortableGrid._step.result = PortableGrid._step.fn(PortableGrid._step.arg)');
+        return PG._step.result;
+    }
+
     PG.api.draw = function (arg) {
+        return oneStep('PortableGrid: draw grid', drawNow, arg);
+    };
+
+    function drawNow(arg) {
         return inPixels(function () {
             var d = doc();
             var out = arg.output || {};
@@ -165,7 +176,7 @@
             if (!cells.length && !arg.overlayFile) d.activeLayer = active;
             return counts;
         });
-    };
+    }
 
     // Platform sizes open as a new document in Photoshop. arg: { w, h, name }
     PG.api.addArtboard = function (arg) {
@@ -176,13 +187,17 @@
     };
 
     PG.api.clear = function () {
+        return oneStep('PortableGrid: clear grid', clearNow, {});
+    };
+
+    function clearNow() {
         var d = doc();
         var guides = d.guides.length;
         d.guides.removeAll();
         removeLayer(d, CELLS);
         removeLayer(d, LINES);
         return { removed: guides };
-    };
+    }
 
     // Saves each cell as its own PNG or JPEG, numbered in reading order.
     // arg: { cells, folder, baseName, format: png | jpg }

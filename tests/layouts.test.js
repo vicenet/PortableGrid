@@ -48,3 +48,25 @@ test('modules group grid columns into readable story widths', () => {
   const news = L.build(grids.magazine, { recipe: 'news' }).elements.filter((e) => e.role === 'headline' || e.role === 'standfirst');
   assert.ok(news.length <= 6, `${news.length} stories on a 12-column page`);
 });
+
+test('plain text becomes article content', () => {
+  const c = L.parseArticle('# The headline\n\nKicker: Food\nThe standfirst.\n\nFirst paragraph.\n\n> A quote.\n\nCaption: A caption.\n\nSecond paragraph.');
+  assert.equal(c.headline, 'The headline');
+  assert.equal(c.kicker, 'Food');
+  assert.equal(c.standfirst, 'The standfirst.');
+  assert.equal(c.quote, 'A quote.');
+  assert.deepEqual(c.captions, ['A caption.']);
+  assert.equal(c.body, 'First paragraph.\rSecond paragraph.');
+});
+
+test('layouts use your text and images, then fall back to placeholders', () => {
+  const content = L.parseArticle('My headline\n\nMy standfirst.\n\nBody text.\n\n> Quote');
+  const els = L.build(grids.magazine, { recipe: 'spread', side: 'right', content, images: ['a.jpg'] }).elements;
+  assert.equal(els.find((e) => e.role === 'headline').text, 'My headline');
+  assert.equal(els.find((e) => e.role === 'pullquote').text, '“Quote”');
+  assert.equal(els.find((e) => e.role === 'body').text, 'Body text.');
+  const photos = L.build(grids.modular, { recipe: 'photos', images: ['1.jpg', '2.jpg'] }).elements.filter((e) => e.kind === 'image');
+  assert.deepEqual(photos.slice(0, 3).map((e) => e.file), ['1.jpg', '2.jpg', undefined]);
+  const news = L.build(grids.magazine, { recipe: 'news', content: { body: 'One. A.\rTwo. B.\rThree. C.\rFour. D.' } }).elements;
+  assert.ok(news.some((e) => e.text === 'One'), 'story headline from its first sentence');
+});

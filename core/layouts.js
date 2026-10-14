@@ -2,7 +2,9 @@
  *
  * build(grid, options) -> { elements, styles }
  *   grid     a layout() result for one page
- *   options  { recipe, textColumns, side: 'left' | 'right' | null, page, folio, runningHead, title, bleed }
+ *   options  { recipe, textColumns, side: 'left' | 'right' | null, page, folio, runningHead, title, bleed,
+ *              content: { kicker, headline, standfirst, body, quote, captions[] }, images: [paths] }
+ *            Missing content falls back to placeholder text; images fill the picture frames in order.
  *
  * Elements use document units, y down:
  *   { kind: 'image', role, frame }                       picture placeholder
@@ -49,6 +51,50 @@
     return out.join('\r');
   }
 
+  // Plain text -> article content. First line: headline. Next paragraph: standfirst. Lines starting with
+  // "> " become the pull quote, "Caption: ..." lines become captions, "Kicker: ..." the kicker; the rest is body.
+  function parseArticle(text) {
+    const out = { captions: [] };
+    const paras = String(text || '').replace(/\r\n?/g, '\n').split(/\n\s*\n|\n/).map((p) => p.trim()).filter(Boolean);
+    const body = [];
+    for (const p of paras) {
+      let m;
+      if ((m = p.match(/^>\s*(.+)/))) out.quote = m[1];
+      else if ((m = p.match(/^caption:\s*(.+)/i))) out.captions.push(m[1]);
+      else if ((m = p.match(/^kicker:\s*(.+)/i))) out.kicker = m[1];
+      else if (!out.headline) out.headline = p.replace(/^#+\s*/, '');
+      else if (!out.standfirst) out.standfirst = p;
+      else body.push(p);
+    }
+    out.body = body.join('\r');
+    return out;
+  }
+
+  // Content source: the user's text where given, placeholder text otherwise.
+  function source(content, P) {
+    const c = content || {};
+    const bodyParas = c.body ? String(c.body).split(/\r|\n/).filter((p) => p.trim()) : [];
+    let caption = 0;
+    return {
+      kicker: (fallback) => c.kicker || fallback,
+      headline: (n, seed) => c.headline || words(n, seed + P),
+      standfirst: (n, seed) => c.standfirst || words(n, seed + P) + '.',
+      quote: (n, seed) => (c.quote ? '“' + c.quote.replace(/^[“"]|[”"]$/g, '') + '”' : '“' + words(n, seed + P) + '.”'),
+      caption: (n, seed) => (c.captions && c.captions[caption] ? c.captions[caption++] : words(n, seed + P) + '.'),
+      body: (count, seed) => (bodyParas.length ? bodyParas.join('\r') : paragraphs(count, seed + P)),
+      // Story i of n for news pages: the body paragraphs are shared out between the stories.
+      story: (i, n, seed) => {
+        if (!bodyParas.length) return { headline: words(i === 0 ? 6 : 8, seed + P), body: paragraphs(4, seed + 10 + P) };
+        const per = Math.max(1, Math.ceil(bodyParas.length / n));
+        const mine = bodyParas.slice(i * per, (i + 1) * per);
+        if (!mine.length) return { headline: words(8, seed + P), body: paragraphs(3, seed + 10 + P) };
+        const first = mine[0].split(/(?<=[.!?])\s/)[0];
+        return { headline: i === 0 && c.headline ? c.headline : first.replace(/[.!?]$/, ''), body: mine.join('\r') };
+      },
+      hasBody: bodyParas.length > 0,
+    };
+  }
+
   const round = (n) => Math.round(n * 100) / 100;
   const frame = (x, y, w, h) => ({ x: round(x), y: round(y), w: round(Math.max(0, w)), h: round(Math.max(0, h)) });
 
@@ -73,6 +119,8 @@
     if (!RECIPES[o.recipe]) throw new Error(`Unknown layout: ${o.recipe}`);
     // Different placeholder copy on every page.
     const P = (o.page || 1) * 3;
+    const T = source(o.content, P);
+    const pictures = (o.images || []).slice();
     const c = grid.content;
     const box = grid.box;
     const base = grid.baselines.length > 1 ? grid.baselines[1] - grid.baselines[0] : 14;
@@ -132,10 +180,10 @@
     }
     const body = (x0, x1, top, bottom, thread, seed) => {
       textColumns(x0, x1).forEach((col, i) => {
-        els.push(textFrame('body', col.x, top, col.w, bottom, { thread, text: i === 0 ? paragraphs(12, seed + P) : '' }));
+        els.push(textFrame('body', col.x, top, col.w, bottom, { thread, text: i === 0 ? T.body(12, seed) : '' }));
       });
     };
-    const image = (role, f) => els.push({ kind: 'image', role, frame: frame(f.x, f.y, f.w, f.h) });
+    const image = (role, f) => els.push(Object.assign({ kind: 'image', role, frame: frame(f.x, f.y, f.w, f.h) }, pictures.length ? { file: pictures.shift() } : {}));
     const bleed = (o.bleed || 0);
     // Full-bleed frames extend past the outer edges only: never across the spine of a spread.
     const inLeft = o.side === 'right' ? 0 : bleed;
@@ -154,39 +202,41 @@
     if (o.recipe === 'article') {
       const imgBottom = snap(c.y + c.h * 0.42);
       image('image', { x: c.x, y: c.y, w: c.w, h: imgBottom - c.y - base });
-      els.push(textFrame('caption', c.x, imgBottom, c.w, imgBottom + base, { text: words(14, 3 + P) + '.' }));
+      els.push(textFrame('caption', c.x, imgBottom, c.w, imgBottom + base, { text: T.caption(14, 3) }));
       let y = imgBottom + base * 2;
-      els.push(textFrame('kicker', c.x, y, c.w, y + base, { text: 'Feature' }));
+      els.push(textFrame('kicker', c.x, y, c.w, y + base, { text: T.kicker('Feature') }));
       y += base;
-      els.push(textFrame('headline', c.x, y, c.w, y + styles.headline.leading * 2, { text: words(6, 1 + P) }));
+      els.push(textFrame('headline', c.x, y, c.w, y + styles.headline.leading * 2, { text: T.headline(6, 1) }));
       y += styles.headline.leading * 2;
-      els.push(textFrame('standfirst', c.x, y, c.w * 0.75, y + styles.standfirst.leading * 2, { text: words(22, 2 + P) + '.' }));
+      els.push(textFrame('standfirst', c.x, y, c.w * 0.75, y + styles.standfirst.leading * 2, { text: T.standfirst(22, 2) }));
       y += styles.standfirst.leading * 2 + base;
       body(c.x, c.x + c.w, y, bottom, 'story', 4);
     } else if (o.recipe === 'opener') {
       image('image', pageFrame);
       const top = snap(c.y + c.h * 0.62);
-      els.push(textFrame('kicker', c.x, top, c.w, top + base, { text: 'Cover story', reverse: true }));
-      els.push(textFrame('headline', c.x, top + base, c.w * 0.8, top + base + styles.headline.leading * 2, { text: words(5, 6 + P), reverse: true }));
-      els.push(textFrame('standfirst', c.x, top + base + styles.headline.leading * 2, c.w * 0.6, bottom, { text: words(26, 7 + P) + '.', reverse: true }));
+      els.push(textFrame('kicker', c.x, top, c.w, top + base, { text: T.kicker('Cover story'), reverse: true }));
+      els.push(textFrame('headline', c.x, top + base, c.w * 0.8, top + base + styles.headline.leading * 2, { text: T.headline(5, 6), reverse: true }));
+      els.push(textFrame('standfirst', c.x, top + base + styles.headline.leading * 2, c.w * 0.6, bottom, { text: T.standfirst(26, 7), reverse: true }));
     } else if (o.recipe === 'spread') {
       if (o.side === 'left') {
         image('image', pageFrame);
       } else {
         let y = c.y;
-        els.push(textFrame('kicker', c.x, y, c.w, y + base, { text: 'Interview' }));
+        els.push(textFrame('kicker', c.x, y, c.w, y + base, { text: T.kicker('Interview') }));
         y += base;
-        els.push(textFrame('headline', c.x, y, c.w, y + styles.headline.leading * 3, { text: words(7, 8 + P) }));
+        els.push(textFrame('headline', c.x, y, c.w, y + styles.headline.leading * 3, { text: T.headline(7, 8) }));
         y += styles.headline.leading * 3;
-        els.push(textFrame('standfirst', c.x, y, c.w, y + styles.standfirst.leading * 3, { text: words(30, 9 + P) + '.' }));
+        els.push(textFrame('standfirst', c.x, y, c.w, y + styles.standfirst.leading * 3, { text: T.standfirst(30, 9) }));
         y += styles.standfirst.leading * 3 + base;
         const quoteTop = snap(c.y + c.h * 0.7);
         body(c.x, c.x + c.w, y, quoteTop - base, 'story', 10);
         els.push({ kind: 'rule', frame: frame(c.x, quoteTop, c.w, 0) });
-        els.push(textFrame('pullquote', c.x, quoteTop + base, c.w, bottom, { text: '“' + words(14, 11 + P) + '.”' }));
+        els.push(textFrame('pullquote', c.x, quoteTop + base, c.w, bottom, { text: T.quote(14, 11) }));
       }
     } else if (o.recipe === 'news') {
-      modules().forEach((cell, i) => {
+      const mods = modules();
+      mods.forEach((cell, i) => {
+        const story = T.story(i, mods.length, 20 + i);
         let y = cell.y;
         const lead = i === 0;
         if (lead) {
@@ -194,19 +244,19 @@
           y = snap(cell.y + cell.h * 0.45);
         }
         const hl = lead ? styles.headline.leading * 2 : styles.standfirst.leading * 2;
-        els.push(textFrame(lead ? 'headline' : 'standfirst', cell.x, y, cell.w, y + hl, { text: words(lead ? 6 : 8, 20 + i) }));
+        els.push(textFrame(lead ? 'headline' : 'standfirst', cell.x, y, cell.w, y + hl, { text: story.headline }));
         y += hl + base;
         const span = cols.filter((col) => col.x >= cell.x - 0.01 && col.x + col.w <= cell.x + cell.w + 0.01);
         const n = Math.max(1, Math.round(span.length / Math.max(1, Math.round(span.length / 2))));
         splitEvenly(cell.x, cell.x + cell.w, cell.w > styles.body.size * 40 ? Math.min(3, n) : 1).forEach((col, k) => {
-          els.push(textFrame('body', col.x, y, col.w, cell.y + cell.h, { thread: 'story' + i, text: k === 0 ? paragraphs(4, 30 + i + P) : '' }));
+          els.push(textFrame('body', col.x, y, col.w, cell.y + cell.h, { thread: 'story' + i, text: k === 0 ? story.body : '' }));
         });
       });
     } else if (o.recipe === 'photos') {
       modules().forEach((cell, i) => {
         const capTop = cell.y + cell.h - base * 2;
         image('image', { x: cell.x, y: cell.y, w: cell.w, h: capTop - cell.y - base * 0.5 });
-        els.push(textFrame('caption', cell.x, capTop, cell.w, cell.y + cell.h, { text: words(9, 40 + i + P) + '.' }));
+        els.push(textFrame('caption', cell.x, capTop, cell.w, cell.y + cell.h, { text: T.caption(9, 40 + i) }));
       });
     } else if (o.recipe === 'cover') {
       image('image', pageFrame);
@@ -234,5 +284,5 @@
     return { elements: els, styles };
   }
 
-  return { RECIPES, build, typeScale };
+  return { RECIPES, build, typeScale, parseArticle };
 });

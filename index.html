@@ -12,11 +12,17 @@
   </header>
 
   <div id="notice" class="notice" hidden></div>
+  <div id="update" class="update" hidden></div>
 
   <div class="bar">
     <select id="preset" title="Presets"></select>
     <button id="savePreset" title="Save the current settings as a preset">Save</button>
     <button id="deletePreset" title="Delete this preset">✕</button>
+    <button id="presetMenu" title="Import or export presets">⋯</button>
+  </div>
+  <div class="bar menu" id="presetActions" hidden>
+    <button id="importPresets">Import presets…</button>
+    <button id="exportPresets">Export my presets…</button>
   </div>
 
   <div class="row">
@@ -37,6 +43,7 @@
   <div class="preview">
     <canvas id="preview"></canvas>
     <div class="preview-info" id="previewInfo"></div>
+    <div class="preview-hint">Drag the margins or a gutter in the preview to adjust them.</div>
   </div>
 
   <details class="card" open>
@@ -209,6 +216,17 @@
     <label>Layout
       <select id="layoutRecipe"></select>
     </label>
+    <label title="Fonts, title, copy and photos from a PortableStudio brand">Brand
+      <select id="layoutBrand"><option value="">None</option></select>
+    </label>
+    <label>Your text (optional)
+      <textarea id="layoutText" rows="4" placeholder="First line: headline&#10;Next paragraph: standfirst&#10;Then the body. Optional lines:&#10;Kicker: …  /  Caption: …  /  &gt; pull quote"></textarea>
+    </label>
+    <div class="row tight">
+      <button id="loadText">Load text file…</button>
+      <button id="chooseImages">Images folder…</button>
+      <span class="hint" id="imagesInfo"></span>
+    </div>
     <div class="row">
       <label>Text columns
         <select id="layoutColumns">
@@ -271,6 +289,34 @@
         </select>
         <button id="exportTiles">Export…</button>
       </div>
+    </div>
+  </details>
+
+  <details class="card" id="settingsCard">
+    <summary>Settings &amp; shortcuts</summary>
+    <div class="checks single">
+      <label class="check ai-only"><input type="checkbox" id="autoSync" checked> Redraw grids when an artboard is resized</label>
+      <label class="check ai-only"><input type="checkbox" id="followArtboard" checked> Load each artboard's own grid when you switch to it</label>
+      <label class="check"><input type="checkbox" id="checkUpdates" checked> Tell me when a new version is out</label>
+    </div>
+    <div class="tool ai-only">
+      <div class="tool-title">Illustrator menu commands</div>
+      <p class="hint">Adds Toggle grid, Snap, Snap and fit, and Grid check to File › Scripts, so they work without the panel.
+        Give them keys with an Action (Insert Menu Item, then a function key).</p>
+      <button id="installScripts">Install menu commands</button>
+    </div>
+    <div class="tool">
+      <div class="tool-title">Keyboard shortcuts (panel focused)</div>
+      <table class="keys">
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Draw grid</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>Backspace</kbd></td><td>Clear grid</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>G</kbd></td><td>Show / hide the grid</td></tr>
+        <tr class="ai-only"><td><kbd>Alt</kbd>+<kbd>S</kbd></td><td>Snap selection</td></tr>
+        <tr class="ai-only"><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Grid check</td></tr>
+        <tr class="ai-only"><td><kbd>Alt</kbd>+<kbd>L</kbd></td><td>Build layout</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>Previous / next preset</td></tr>
+      </table>
+      <p class="hint">On a Mac use <kbd>Cmd</kbd> for Ctrl and <kbd>Option</kbd> for Alt.</p>
     </div>
   </details>
 

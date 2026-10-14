@@ -165,3 +165,22 @@ details.sub > summary { cursor: pointer; color: var(--muted); margin-bottom: 6px
 #checkScore { flex: 1; margin: 0; }
 #checkScore.good { color: var(--ok); }
 #checkScore.bad { color: var(--warn); }
+
+.update { border-radius: 4px; padding: 8px; margin-bottom: 8px; background: rgba(0, 163, 255, .14); border: 1px solid var(--accent); display: flex; gap: 8px; align-items: center; }
+.update[hidden] { display: none; }
+.update span { flex: 1; }
+.bar.menu { margin-top: -4px; }
+.bar.menu button { flex: 1; }
+.preview-hint { font-size: 10px; color: var(--muted); opacity: .7; }
+#preview.drag-x { cursor: ew-resize; }
+#preview.drag-y { cursor: ns-resize; }
+textarea { width: 100%; background: var(--field); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; font: inherit; color: var(--text); resize: vertical; margin-top: 3px; }
+.checks.single { grid-template-columns: 1fr; margin-bottom: 6px; }
+table.keys { border-collapse: collapse; width: 100%; margin: 4px 0; }
+table.keys td { padding: 2px 0; color: var(--muted); }
+table.keys td:first-child { color: var(--text); white-space: nowrap; padding-right: 10px; }
+kbd { background: var(--field); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font: 11px Consolas, Menlo, monospace; }
+#imagesInfo { flex: 1; margin: 0; }
+
+/* The hidden attribute always wins over display rules above. */
+[hidden] { display: none !important; }

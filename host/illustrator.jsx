@@ -70,6 +70,7 @@
         layer.locked = false;
         layer.visible = true;
         layer.zOrder(ZOrderMethod.BRINGTOFRONT);
+        layer.printable = false;
         return layer;
     }
 
@@ -191,6 +192,11 @@
                 var group = layer.groupItems.add();
                 group.name = 'Grid - ' + g.label;
                 group.note = NOTE + g.key;
+                if (g.stored) {
+                    var tag = group.tags.add();
+                    tag.name = 'portablegrid';
+                    tag.value = JSON.stringify(g.stored);
+                }
 
                 if (out.cells) {
                     var cells = subGroup(group, 'Cells', style.cellOpacity === undefined ? 20 : style.cellOpacity);
@@ -504,6 +510,97 @@
         });
     };
 
+    // Grids drawn earlier in this document: settings (as stored) and the artboard as it is now.
+    PG.api.storedGrids = function () {
+        return withDocCoords(function () {
+            if (!app.documents.length) return [];
+            var d = app.activeDocument;
+            var layer = findLayer(d);
+            if (!layer) return [];
+            var out = [];
+            for (var i = 0; i < layer.groupItems.length; i++) {
+                var g = layer.groupItems[i];
+                var note = String(g.note || '');
+                if (note.indexOf(NOTE) !== 0) continue;
+                var stored = null;
+                try {
+                    stored = JSON.parse(g.tags.getByName('portablegrid').value);
+                } catch (e) { /* drawn by an older version */ }
+                var key = note.substring(NOTE.length);
+                var box = null;
+                var m = key.match(/^ab(\d+)$/);
+                if (m && +m[1] < d.artboards.length) box = rectToBox(d.artboards[+m[1]].artboardRect);
+                out.push({ key: key, stored: stored, box: box, active: m ? +m[1] === d.artboards.getActiveArtboardIndex() : false });
+            }
+            return out;
+        });
+    };
+
+    // The grid lines that are actually in the document (guides and baseline lines of every grid).
+    // Used by the menu scripts, which work without the panel.
+    PG.api.documentLines = function () {
+        return withDocCoords(function () {
+            var d = doc();
+            var layer = findLayer(d);
+            var out = { vertical: [], horizontal: [], baselines: [] };
+            if (!layer) return out;
+            function walk(c, inBase) {
+                for (var i = 0; i < c.pathItems.length; i++) {
+                    var p = c.pathItems[i];
+                    if (p.pathPoints.length !== 2) continue;
+                    var a = p.pathPoints[0].anchor;
+                    var b = p.pathPoints[1].anchor;
+                    if (Math.abs(a[0] - b[0]) < 0.01) out.vertical.push(a[0]);
+                    else if (Math.abs(a[1] - b[1]) < 0.01) (inBase ? out.baselines : out.horizontal).push(-a[1]);
+                }
+                for (var j = 0; j < c.groupItems.length; j++) walk(c.groupItems[j], inBase || c.groupItems[j].name === 'Baseline grid');
+            }
+            for (var k = 0; k < layer.groupItems.length; k++) {
+                var g = layer.groupItems[k];
+                if (String(g.note || '').indexOf(NOTE) === 0) walk(g, false);
+            }
+            return out;
+        });
+    };
+
+    PG.api.toggleGrid = function () {
+        var layer = findLayer(doc());
+        if (!layer) return { visible: false };
+        layer.visible = !layer.visible;
+        return { visible: layer.visible };
+    };
+
+    // Writes small scripts into Illustrator's Scripts menu (File > Scripts), so the main actions can be
+    // run, and given keyboard shortcuts through Actions, without the panel.
+    PG.api.installScripts = function (arg) {
+        var dir = new Folder(app.path + '/Presets/' + app.locale + '/Scripts');
+        if (!dir.exists) dir = new Folder(app.path + '/Presets/en_US/Scripts');
+        var made = [];
+        var root = String(PG.root);
+        var list = [
+            ['PortableGrid - Toggle grid', "PortableGrid.api.toggleGrid({})"],
+            ['PortableGrid - Snap to grid', "var l = PortableGrid.api.documentLines(); l.mode = 'move'; PortableGrid.api.snap(l)"],
+            ['PortableGrid - Snap and fit to grid', "var l = PortableGrid.api.documentLines(); l.mode = 'fit'; PortableGrid.api.snap(l)"],
+            ['PortableGrid - Grid check', "var l = PortableGrid.api.documentLines(); l.boxes = [{ x: -1e6, y: -1e6, w: 2e6, h: 2e6 }]; l.mark = true; var r = PortableGrid.api.check(l); alert(r.score + '% on grid (' + (r.total - r.off) + ' of ' + r.total + ')', 'PortableGrid')"]
+        ];
+        for (var i = 0; i < list.length; i++) {
+            var file = new File(dir.fsName + '/' + list[i][0] + '.jsx');
+            file.encoding = 'UTF-8';
+            if (!file.open('w')) {
+                throw new Error('Illustrator\'s Scripts folder is write-protected (' + dir.fsName +
+                    '). Start Illustrator once with "Run as administrator", then click Install again.');
+            }
+            file.write('// ' + list[i][0] + ' (installed by the PortableGrid panel)\n' +
+                '#target illustrator\n' +
+                "$.evalFile(new File('" + root + "/host/index.jsx'));\n" +
+                "PortableGrid.init('" + root + "');\n" +
+                'try { ' + list[i][1] + '; } catch (e) { alert(e.message, \'PortableGrid\'); }\n');
+            file.close();
+            made.push(file.fsName);
+        }
+        return { folder: dir.fsName, files: made };
+    };
+
     // ---------- page layouts ----------
     var LAYOUT_LAYER = 'Layout';
     var LAYOUT_NOTE = 'portablegrid-layout:';
@@ -580,7 +677,7 @@
             if (grid) layer.move(grid, ElementPlacement.PLACEAFTER);
             var styles = layoutStyles(d, arg.styles, arg.fonts || {});
             var white = PG.hexColor('#FFFFFF');
-            var counts = { pages: 0, text: 0, images: 0 };
+            var counts = { pages: 0, text: 0, images: 0, placed: 0, overset: [] };
 
             for (var p = 0; p < arg.pages.length; p++) {
                 var page = arg.pages[p];
@@ -597,7 +694,12 @@
                     var el = page.elements[i];
                     var f = el.frame;
                     if (el.kind === 'image') {
-                        placeholder(group, f);
+                        if (el.file && new File(el.file).exists) {
+                            placeImage(group, f, el.file);
+                            counts.placed++;
+                        } else {
+                            placeholder(group, f);
+                        }
                         counts.images++;
                     } else if (el.kind === 'rule') {
                         var rule = line(group, f.x, f.y, f.x + f.w, f.y);
@@ -623,11 +725,80 @@
                     }
                 }
                 counts.pages++;
+                // Text that doesn't fit: the last frame of every thread, and every unthreaded frame.
+                var lastOf = {};
+                var frames = [];
+                for (var tfi = 0; tfi < group.textFrames.length; tfi++) frames.push(group.textFrames[tfi]);
+                for (var q = 0; q < frames.length; q++) {
+                    var fr = frames[q];
+                    // Each story once, from its first frame (nextFrame is set even on the last frame,
+                    // so it can't tell where a thread ends).
+                    if (fr.kind !== TextType.AREATEXT || fr.previousFrame) continue;
+                    var lost = oversetChars(fr);
+                    if (lost > 0) {
+                        var frs = fr.story.textFrames;
+                        counts.overset.push({ page: page.label, role: fr.name, words: Math.max(1, Math.round(lost / 6)) });
+                        markOverset(frs[frs.length - 1]);
+                    }
+                }
             }
             app.redraw();
             return counts;
         });
     };
+
+    // Places a linked image so it fills (and is clipped to) a frame.
+    function placeImage(group, f, path) {
+        var item = group.placedItems.add();
+        item.file = new File(path);
+        var b = item.geometricBounds;
+        var w = b[2] - b[0];
+        var h = b[1] - b[3];
+        var sc = Math.max(f.w / w, f.h / h) * 100;
+        item.resize(sc, sc, true, true, true, true, 100, Transformation.CENTER);
+        b = item.geometricBounds;
+        item.translate(f.x + f.w / 2 - (b[0] + b[2]) / 2, -(f.y + f.h / 2) - (b[1] + b[3]) / 2);
+        var clip = clipTo(item, { x: f.x, y: f.y, w: f.w, h: f.h });
+        clip.name = 'Image';
+        return clip;
+    }
+
+    // Characters of a story that no frame shows (0 when everything fits).
+    function oversetChars(tf) {
+        var story = tf.story;
+        var total = story.textRange.characters.length;
+        var shown = 0;
+        for (var i = 0; i < story.textFrames.length; i++) {
+            var fr = story.textFrames[i];
+            for (var k = 0; k < fr.lines.length; k++) shown += fr.lines[k].characters.length;
+        }
+        // Paragraph returns are not part of any line.
+        var lost = total - shown - story.paragraphs.length;
+        return lost > 2 ? lost : 0;
+    }
+
+    function markOverset(tf) {
+        var layer = gridLayer(tf.layer.parent);
+        var g;
+        for (var i = 0; i < layer.groupItems.length; i++) if (String(layer.groupItems[i].note) === CHECK_NOTE) g = layer.groupItems[i];
+        if (!g) {
+            g = layer.groupItems.add();
+            g.name = 'Grid check';
+            g.note = CHECK_NOTE;
+        }
+        var b = tf.geometricBounds;
+        var r = g.pathItems.rectangle(b[3] + 4, b[2] - 10, 14, 14);
+        r.filled = true;
+        r.stroked = false;
+        r.fillColor = PG.hexColor('#E5534B');
+        r.name = 'Overset text';
+        var plus = g.textFrames.add();
+        plus.contents = '+';
+        plus.textRange.characterAttributes.size = 12;
+        plus.textRange.characterAttributes.fillColor = PG.hexColor('#FFFFFF');
+        plus.left = b[2] - 7;
+        plus.top = b[3] + 4;
+    }
 
     PG.api.clearLayout = function (arg) {
         var d = doc();
