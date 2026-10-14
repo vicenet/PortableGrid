@@ -12,7 +12,7 @@ for (const p of presets) {
     for (const box of pages) {
       const r = G.layout(box, p, { unit: 'px', ppi: 72 });
       const things = r.vertical.length + r.horizontal.length + r.baselines.length + r.pattern.lines.length
-        + r.pattern.dots.length + r.overlay.lines.length + r.overlay.curves.length + (r.columns.length || r.rows.length ? r.cells.length : 0);
+        + r.pattern.dots.length + r.overlay.lines.length + r.overlay.curves.length + r.zones.length + (r.columns.length || r.rows.length ? r.cells.length : 0);
       assert.ok(things > 0, `draws nothing on ${box.w}x${box.h}`);
       for (const c of r.cells) assert.ok(c.w >= 0 && c.h >= 0, 'negative cell');
     }

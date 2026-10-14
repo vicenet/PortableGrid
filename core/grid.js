@@ -8,7 +8,7 @@
  * Spec:
  *   margin:   { top, right, bottom, left }   mirror: true swaps left/right on even pages (facing pages)
  *   columns:  { count, gutter, size, align, pattern }
- *   rows:     { count, gutter, size, align, pattern }
+ *   rows:     { count, gutter, size, align, pattern, lock }   lock: rows and gutters in whole baselines
  *       size     fixed track width (blank = fill); with align start | center | end
  *       pattern  track sizes instead of count, e.g. "2fr 1fr 1fr", "1 0.618 1", "240px auto 30%"
  *   baseline: { size, offset }               horizontal lines every `size` inside the content area
@@ -18,6 +18,7 @@
  *   pattern:  { type, size }                 square | dots | isometric | triangle | hex drawing grid
  *   overlays: { thirds, phi, diagonals, armature, triangles, spiral, flipX, flipY }
  *             composition guides drawn over the content area
+ *   zones:    [{ left | right, top | bottom, w, h, label, kind }]   platform safe zones (unsafe UI areas)
  */
 (function (root, factory) {
   const api = factory();
@@ -384,6 +385,43 @@
     return { lines: dedupeLines(lines), curves };
   }
 
+  // A safe-zone rectangle: { left | right, top | bottom, w, h, label, kind }. Lengths take units or %,
+  // so platform presets scale with the artboard. kind "unsafe" marks app UI; "safe" marks the safe area.
+  function zone(box, z, ctx) {
+    const w = toDoc(z.w, ctx, box.w);
+    const h = toDoc(z.h, ctx, box.h);
+    if (!(w > 0 && h > 0)) return null;
+    const x = z.right !== undefined ? box.x + box.w - toDoc(z.right, ctx, box.w) - w : box.x + toDoc(z.left || 0, ctx, box.w);
+    const y = z.bottom !== undefined ? box.y + box.h - toDoc(z.bottom, ctx, box.h) - h : box.y + toDoc(z.top || 0, ctx, box.h);
+    return { x: round(x), y: round(y), w: round(w), h: round(h), label: z.label || '', kind: z.kind || 'unsafe' };
+  }
+
+  // A harmonious grid from one number: the body text size (pt). Leading becomes the baseline;
+  // margins, gutters and rows are whole baselines.
+  function harmonize(bodySize, columns) {
+    const size = Math.max(4, +bodySize || 10);
+    const b = Math.round(size * 1.4 * 2) / 2;
+    const u = (n) => +(n * b).toFixed(2) + 'pt';
+    return {
+      baseline: { size: u(1), offset: '0' },
+      margin: { top: u(4), right: u(3), bottom: u(5), left: u(3) },
+      columns: { count: columns || 6, gutter: u(1), size: '', pattern: '' },
+      rows: { count: 6, gutter: u(1), size: '', pattern: '', lock: true },
+      edges: true,
+    };
+  }
+
+  // A modular type scale whose leading is always a whole number of baselines.
+  const RATIOS = { 'Minor third': 1.2, 'Major third': 1.25, 'Perfect fourth': 1.333, 'Augmented fourth': 1.414, 'Perfect fifth': 1.5, 'Golden ratio': PHI };
+  function typeScale(bodySize, baseline, ratio) {
+    const steps = [['Display', 5], ['Heading 1', 4], ['Heading 2', 3], ['Heading 3', 2], ['Heading 4', 1], ['Body', 0], ['Small', -1], ['Caption', -2]];
+    return steps.map(([name, n]) => {
+      const size = Math.round(bodySize * Math.pow(ratio, n) * 4) / 4;
+      const leading = Math.max(1, Math.ceil((size * (n > 0 ? 1.12 : 1.3)) / baseline - 0.05)) * baseline;
+      return { name, size, leading: Math.round(leading * 100) / 100 };
+    });
+  }
+
   // box: { x, y, w, h } in document units. ctx.mirror swaps left/right margins (facing pages).
   function layout(box, spec, ctx) {
     spec = spec || {};
@@ -401,9 +439,28 @@
     const cols = tracks(content.w, {
       count: c.count, gutter: toDoc(c.gutter, ctx, content.w), size: toDoc(c.size, ctx, content.w), align: c.align, pattern: c.pattern,
     }, ctx).map((t) => ({ x: round(content.x + t.start), w: round(t.size) }));
-    const rows = tracks(content.h, {
+    const baselines = [];
+    const b = spec.baseline || {};
+    const step = toDoc(b.size, ctx, content.h);
+    if (step > 0) {
+      if (content.h / step > MAX_LINES) throw new Error('That baseline grid is too dense. Use a larger size.');
+      const start = content.y + toDoc(b.offset, ctx, content.h);
+      for (let y = start; y <= content.y + content.h + 0.001; y += step) baselines.push(round(y));
+    }
+
+    let rows = tracks(content.h, {
       count: r.count, gutter: toDoc(r.gutter, ctx, content.h), size: toDoc(r.size, ctx, content.h), align: r.align, pattern: r.pattern,
     }, ctx).map((t) => ({ y: round(content.y + t.start), h: round(t.size) }));
+    // Rows locked to the baseline grid: every row and row gutter is a whole number of baselines,
+    // so text in any module lines up with text in every other module.
+    if (r.lock && step > 0 && rows.length && !r.pattern) {
+      const n = rows.length;
+      const g = Math.round(toDoc(r.gutter, ctx, content.h) / step);
+      const k = Math.floor((content.h / step - g * (n - 1)) / n);
+      if (k < 1) throw new Error('Too many rows for this baseline grid. Use fewer rows or a smaller baseline.');
+      const startY = content.y + toDoc(b.offset, ctx, content.h);
+      rows = rows.map((_, i) => ({ y: round(startY + i * (k + g) * step), h: round(k * step) }));
+    }
 
     const vertical = [];
     const horizontal = [];
@@ -421,15 +478,6 @@
     list(cu.vertical, ctx, content.w).forEach((v) => vertical.push(content.x + v));
     list(cu.horizontal, ctx, content.h).forEach((v) => horizontal.push(content.y + v));
 
-    const baselines = [];
-    const b = spec.baseline || {};
-    const step = toDoc(b.size, ctx, content.h);
-    if (step > 0) {
-      if (content.h / step > MAX_LINES) throw new Error('That baseline grid is too dense. Use a larger size.');
-      const start = content.y + toDoc(b.offset, ctx, content.h);
-      for (let y = start; y <= content.y + content.h + 0.001; y += step) baselines.push(round(y));
-    }
-
     const cells = [];
     const cellCols = cols.length ? cols : [{ x: content.x, w: content.w }];
     const cellRows = rows.length ? rows : [{ y: content.y, h: content.h }];
@@ -438,6 +486,7 @@
     const p = spec.pattern || {};
     const pat = patternGrid(content, p.type, toDoc(p.size, ctx, Math.min(content.w, content.h)));
     const ov = overlays(content, spec.overlays);
+    const zones = (spec.zones || []).map((z) => zone(box, z, ctx)).filter(Boolean);
 
     return {
       box,
@@ -450,6 +499,7 @@
       baselines: baselines.filter((y) => y >= box.y && y <= box.y + box.h),
       pattern: pat,
       overlay: ov,
+      zones,
     };
   }
 
@@ -466,8 +516,9 @@
     const lines = result.pattern.lines.length + result.overlay.lines.length + result.overlay.curves.length;
     if (lines) parts.push(plural(lines, 'line'));
     if (result.pattern.dots.length) parts.push(plural(result.pattern.dots.length, 'dot'));
+    if (result.zones.length) parts.push(plural(result.zones.length, 'safe zone'));
     return parts.join(', ') || 'Nothing to draw';
   }
 
-  return { UNITS, PHI, parseLength, parsePattern, toDoc, tracks, layout, describe, goldenSpiral, patternGrid, overlays };
+  return { UNITS, PHI, RATIOS, parseLength, parsePattern, toDoc, tracks, layout, describe, goldenSpiral, patternGrid, overlays, harmonize, typeScale };
 });

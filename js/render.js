@@ -1,7 +1,7 @@
 /* Draws a layout result on a 2D canvas: used for the panel preview and, at full size, for the
- * Photoshop overlay layer (baselines, drawing grids and composition lines). */
+ * Photoshop overlay layer (baselines, drawing grids, composition lines and safe zones). */
 const GridRender = (() => {
-  // what: { background, cells, guides, baseline, pattern, overlays }
+  // what: { background, cells, guides, baseline, pattern, overlays, zones, preview }
   // view: { scale, ox, oy } maps document units to canvas pixels: px = ox + x * scale
   // style: { color, weight (canvas px), cellAlpha, lineAlpha, guideColor }
   function draw(g, result, view, style, what) {
@@ -74,6 +74,24 @@ const GridRender = (() => {
     }
     g.globalAlpha = 1;
 
+    if (what.zones && result.zones && result.zones.length) {
+      result.zones.forEach((z) => {
+        if (z.kind === 'safe') {
+          g.globalAlpha = 0.9;
+          g.strokeStyle = '#4CAF7A';
+          g.lineWidth = Math.max(1.5, weight * 2);
+          g.setLineDash([8, 6]);
+          g.strokeRect(X(z.x), Y(z.y), z.w * view.scale, z.h * view.scale);
+          g.setLineDash([]);
+        } else {
+          g.globalAlpha = what.preview ? 0.28 : 0.22;
+          g.fillStyle = '#E5534B';
+          g.fillRect(X(z.x), Y(z.y), z.w * view.scale, z.h * view.scale);
+        }
+      });
+      g.globalAlpha = 1;
+    }
+
     if (what.guides) {
       g.strokeStyle = style.guideColor || style.color;
       g.lineWidth = 1;
@@ -87,7 +105,7 @@ const GridRender = (() => {
   // Renders the line layers of several layouts into one transparent PNG of the document size.
   // Returns a Buffer, or null when there is nothing to draw.
   function overlayPng(results, size, style, what) {
-    if (!what.baseline && !what.pattern && !what.overlays) return null;
+    if (!what.baseline && !what.pattern && !what.overlays && !what.zones) return null;
     const max = 16384;
     if (size.w > max || size.h > max || size.w * size.h > 2.5e8) {
       throw new Error('This document is too large for drawn lines in Photoshop. Use guides, or a smaller document.');

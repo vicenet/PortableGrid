@@ -1,6 +1,6 @@
 {
   "name": "portablegrid",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Free, open-source layout grid plugin for Adobe Illustrator and Photoshop: column, modular, baseline, golden ratio, isometric and composition grids.",
   "scripts": {

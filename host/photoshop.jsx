@@ -134,7 +134,7 @@
             var d = doc();
             var out = arg.output || {};
             var style = arg.style || {};
-            var counts = { guides: 0, cells: 0, baselines: 0, lines: 0, artboards: 0 };
+            var counts = { guides: 0, cells: 0, baselines: 0, lines: 0, zones: 0, artboards: 0 };
             var active = d.activeLayer;
             if (arg.replace) {
                 if (out.guides) d.guides.removeAll();
@@ -153,6 +153,7 @@
                 if (out.baseline) counts.baselines += g.baselines.length;
                 if (out.pattern) counts.lines += g.pattern.lines.length + g.pattern.dots.length;
                 if (out.overlays) counts.lines += g.overlay.lines.length + g.overlay.curves.length;
+                if (out.zones) counts.zones += g.zones.length;
             }
             if (cells.length) {
                 fillLayer(d, CELLS, cells, solid(style.color), style.cellOpacity === undefined ? 25 : style.cellOpacity);
@@ -163,6 +164,14 @@
             }
             if (!cells.length && !arg.overlayFile) d.activeLayer = active;
             return counts;
+        });
+    };
+
+    // Platform sizes open as a new document in Photoshop. arg: { w, h, name }
+    PG.api.addArtboard = function (arg) {
+        return inPixels(function () {
+            app.documents.add(UnitValue(arg.w, 'px'), UnitValue(arg.h, 'px'), 72, arg.name || 'Untitled', NewDocumentMode.RGB, DocumentFill.WHITE);
+            return { index: 0 };
         });
     };
 

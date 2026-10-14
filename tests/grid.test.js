@@ -114,3 +114,35 @@ test('describe summarises the result', () => {
   const r = G.layout(box, { columns: { count: 3 }, rows: { count: 2 } }, ctx);
   assert.match(G.describe(r), /3 columns × 2 rows/);
 });
+
+test('rows locked to the baseline are whole baselines', () => {
+  const r = G.layout({ x: 0, y: 0, w: 600, h: 800 }, { margin: { top: 40, bottom: 40 }, baseline: { size: 12 }, rows: { count: 5, gutter: 12, lock: true } }, ctx);
+  for (const row of r.rows) {
+    near((row.y - 40) % 12, 0, 'row top on a baseline');
+    near(row.h % 12, 0, 'row height in baselines');
+  }
+  near(r.rows[1].y - (r.rows[0].y + r.rows[0].h), 12, 'gutter');
+  assert.throws(() => G.layout(box, { baseline: { size: 100 }, rows: { count: 20, lock: true } }, ctx), /Too many rows/);
+});
+
+test('safe zones anchor to edges and scale with %', () => {
+  const r = G.layout({ x: 0, y: 0, w: 1080, h: 1920 }, { zones: [{ top: 0, left: 0, w: '100%', h: 250, label: 'top' }, { bottom: 0, right: 0, w: 120, h: '50%' }] }, ctx);
+  assert.deepEqual(r.zones[0], { x: 0, y: 0, w: 1080, h: 250, label: 'top', kind: 'unsafe' });
+  assert.deepEqual([r.zones[1].x, r.zones[1].y, r.zones[1].h], [960, 960, 960]);
+});
+
+test('harmonize builds a grid from the body size', () => {
+  const spec = G.harmonize(10, 6);
+  assert.equal(spec.baseline.size, '14pt');
+  assert.equal(spec.margin.top, '56pt');
+  const r = G.layout({ x: 0, y: 0, w: 595, h: 842 }, spec, { unit: 'pt', ppi: 72 });
+  assert.equal(r.columns.length, 6);
+  for (const row of r.rows) near((row.y - 56) % 14, 0);
+});
+
+test('type scale leading is a whole number of baselines', () => {
+  const t = G.typeScale(10, 14, 1.25);
+  assert.equal(t.find((x) => x.name === 'Body').size, 10);
+  for (const s of t) near((s.leading / 14) % 1, 0, s.name);
+  assert.ok(t[0].size > t[1].size);
+});

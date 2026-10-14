@@ -126,12 +126,10 @@ input[type=color] {
   border-radius: 6px;
 }
 .preview-info {
-  position: absolute;
-  left: 8px;
-  bottom: 6px;
+  margin-top: 4px;
   font-size: 11px;
   color: var(--muted);
-  pointer-events: none;
+  min-height: 15px;
 }
 
 .tool { padding: 8px 0; border-top: 1px solid var(--border); }
@@ -160,3 +158,10 @@ details.sub > summary { cursor: pointer; color: var(--muted); margin-bottom: 6px
 .style-row { gap: 6px; margin-top: 8px; }
 .style-row label { margin-bottom: 6px; }
 .style-row input[type=color] { display: block; width: 100%; height: 27px; margin-top: 3px; }
+
+.hidden { display: none !important; }
+.hint-inline { font-weight: normal; color: var(--muted); font-size: 11px; margin-left: 6px; margin-right: auto; }
+#sizeCard .hint { flex: 1; margin: 0; }
+#checkScore { flex: 1; margin: 0; }
+#checkScore.good { color: var(--ok); }
+#checkScore.bad { color: var(--warn); }

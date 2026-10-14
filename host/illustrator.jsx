@@ -181,7 +181,7 @@
             var lineOpacity = style.lineOpacity === undefined ? 70 : style.lineOpacity;
             var color = PG.hexColor(style.color);
             var layer = gridLayer(d);
-            var counts = { guides: 0, cells: 0, baselines: 0, lines: 0, artboards: 0 };
+            var counts = { guides: 0, cells: 0, baselines: 0, lines: 0, zones: 0, artboards: 0 };
 
             for (var i = 0; i < arg.grids.length; i++) {
                 var g = arg.grids[i];
@@ -240,6 +240,37 @@
                     counts.lines += g.overlay.lines.length + g.overlay.curves.length;
                 }
 
+                if (out.zones && g.zones && g.zones.length) {
+                    var zg = subGroup(group, 'Safe zones');
+                    var red = PG.hexColor('#E5534B');
+                    for (var z = 0; z < g.zones.length; z++) {
+                        var zn = g.zones[z];
+                        var zr = zg.pathItems.rectangle(-zn.y, zn.x, zn.w, zn.h);
+                        zr.name = zn.label || 'Zone';
+                        if (zn.kind === 'safe') {
+                            zr.filled = false;
+                            zr.stroked = true;
+                            zr.strokeColor = PG.hexColor('#4CAF7A');
+                            zr.strokeWidth = Math.max(1, zn.w / 400);
+                            zr.strokeDashes = [8, 6];
+                        } else {
+                            zr.stroked = false;
+                            zr.filled = true;
+                            zr.fillColor = red;
+                            zr.opacity = 22;
+                        }
+                        if (zn.label) {
+                            var lab = zg.textFrames.add();
+                            lab.contents = zn.label;
+                            lab.textRange.characterAttributes.size = Math.max(8, Math.min(g.box.w, g.box.h) / 30);
+                            lab.textRange.characterAttributes.fillColor = zn.kind === 'safe' ? PG.hexColor('#2E7D55') : PG.hexColor('#B3261E');
+                            lab.left = zn.x + 8;
+                            lab.top = -(zn.y + 8);
+                        }
+                    }
+                    counts.zones = (counts.zones || 0) + g.zones.length;
+                }
+
                 if (out.guides) {
                     var guides = subGroup(group, 'Guides');
                     for (var v = 0; v < g.vertical.length; v++) {
@@ -270,6 +301,358 @@
             app.redraw();
             return counts;
         });
+    };
+
+    // ---------- snap, check, type, artboards ----------
+
+    function nearest(v, list) {
+        var best = null;
+        for (var i = 0; i < list.length; i++) {
+            if (best === null || Math.abs(list[i] - v) < Math.abs(best - v)) best = list[i];
+        }
+        return best;
+    }
+
+    // The first value in list greater than v, or fallback.
+    function nextAfter(v, list, fallback) {
+        var best = null;
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] > v + 0.01 && (best === null || list[i] < best)) best = list[i];
+        }
+        return best === null ? fallback : best;
+    }
+
+    // Approximate first baseline (y down) of a text frame.
+    function firstBaseline(tf) {
+        if (tf.kind === TextType.POINTTEXT) return -tf.anchor[1];
+        var top = -tf.geometricBounds[1];
+        var ca = tf.textRange.characters.length ? tf.textRange.characters[0].characterAttributes : tf.textRange.characterAttributes;
+        var leading = ca.autoLeading ? ca.size * 1.2 : ca.leading;
+        if (tf.kind === TextType.AREATEXT && tf.firstBaseline === FirstBaselineType.BASELINELEADING) return top + leading;
+        return top + ca.size * 0.8;
+    }
+
+    function edges(item) {
+        var b = item.geometricBounds;
+        return { l: b[0], t: -b[1], r: b[2], b: -b[3] };
+    }
+
+    // Moves (and optionally resizes) the selection onto the grid.
+    // arg: { vertical, horizontal, baselines, mode: 'move' | 'fit' }
+    PG.api.snap = function (arg) {
+        return withDocCoords(function () {
+            var d = doc();
+            var items = selectionItems(d);
+            if (!items.length) throw new Error('Select the objects to snap first.');
+            var V = arg.vertical;
+            var H = arg.horizontal.concat(arg.baselines || []);
+            var moved = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var e = edges(it);
+                var isText = it.typename === 'TextFrame';
+                if (arg.mode === 'fit' && !isText && V.length > 1 && H.length > 1) {
+                    // Edges go to the nearest grid lines; an object never collapses to zero size.
+                    var l = nearest(e.l, V);
+                    var r = nearest(e.r, V);
+                    if (r <= l) r = nextAfter(l, V, l + (e.r - e.l));
+                    var t = nearest(e.t, H);
+                    var bt = nearest(e.b, H);
+                    if (bt <= t) bt = nextAfter(t, H, t + (e.b - e.t));
+                    it.width = r - l;
+                    it.height = bt - t;
+                    e = edges(it);
+                    it.translate(l - e.l, -(t - e.t));
+                } else {
+                    var dl = nearest(e.l, V) - e.l;
+                    var dr = nearest(e.r, V) - e.r;
+                    var dx = V.length ? (Math.abs(dl) <= Math.abs(dr) ? dl : dr) : 0;
+                    var dy = 0;
+                    if (isText && arg.baselines && arg.baselines.length) {
+                        var base = firstBaseline(it);
+                        dy = nearest(base, arg.baselines) - base;
+                    } else if (H.length) {
+                        var dt = nearest(e.t, H) - e.t;
+                        var db = nearest(e.b, H) - e.b;
+                        dy = Math.abs(dt) <= Math.abs(db) ? dt : db;
+                    }
+                    it.translate(dx, -dy);
+                }
+                moved++;
+            }
+            app.redraw();
+            return { snapped: moved };
+        });
+    };
+
+    var CHECK_NOTE = 'portablegrid-check';
+
+    function clearChecks(d) {
+        var layer = findLayer(d);
+        if (!layer) return 0;
+        var n = 0;
+        for (var i = layer.groupItems.length - 1; i >= 0; i--) {
+            if (String(layer.groupItems[i].note) === CHECK_NOTE) {
+                layer.groupItems[i].remove();
+                n++;
+            }
+        }
+        if (!layer.pageItems.length) layer.remove();
+        return n;
+    }
+
+    // Grid check: which objects sit on the grid? Marks the others with a red outline.
+    // arg: { vertical, horizontal, baselines, boxes, tolerance, mark }
+    PG.api.check = function (arg) {
+        return withDocCoords(function () {
+            var d = doc();
+            clearChecks(d);
+            var tol = arg.tolerance || 0.5;
+            var V = arg.vertical;
+            // On a baseline grid, sitting on a baseline counts as on-grid for every object.
+            var H = arg.horizontal.concat(arg.baselines || []);
+            var near = function (v, list) { var n = nearest(v, list); return n !== null && Math.abs(n - v) <= tol; };
+            var inBoxes = function (e) {
+                for (var k = 0; k < arg.boxes.length; k++) {
+                    var bx = arg.boxes[k];
+                    if (e.r > bx.x && e.l < bx.x + bx.w && e.b > bx.y && e.t < bx.y + bx.h) return true;
+                }
+                return false;
+            };
+            var off = [];
+            var total = 0;
+            for (var li = 0; li < d.layers.length; li++) {
+                var layer = d.layers[li];
+                if (layer.name === LAYER || !layer.visible) continue;
+                for (var i = 0; i < layer.pageItems.length; i++) {
+                    var it = layer.pageItems[i];
+                    if (it.guides || it.hidden || it.parent !== layer) continue;
+                    var e = edges(it);
+                    if (!inBoxes(e)) continue;
+                    total++;
+                    var okX = near(e.l, V) || near(e.r, V);
+                    var okY = near(e.t, H) || near(e.b, H);
+                    if (it.typename === 'TextFrame' && arg.baselines && arg.baselines.length) okY = okY || near(firstBaseline(it), arg.baselines);
+                    if (!(okX && okY)) off.push({ item: it, e: e, x: okX, y: okY });
+                }
+            }
+            if (arg.mark && off.length) {
+                var gl = gridLayer(d);
+                var g = gl.groupItems.add();
+                g.name = 'Grid check';
+                g.note = CHECK_NOTE;
+                var red = PG.hexColor('#E5534B');
+                for (var j = 0; j < off.length; j++) {
+                    var o = off[j].e;
+                    var r = g.pathItems.rectangle(-(o.t - 3), o.l - 3, o.r - o.l + 6, o.b - o.t + 6);
+                    r.filled = false;
+                    r.stroked = true;
+                    r.strokeColor = red;
+                    r.strokeWidth = 1.5;
+                    r.strokeDashes = [4, 3];
+                    r.name = (off[j].x ? '' : 'Off columns ') + (off[j].y ? '' : 'Off rows/baselines');
+                }
+            }
+            app.redraw();
+            return { total: total, off: off.length, score: total ? Math.round(((total - off.length) / total) * 100) : 100 };
+        });
+    };
+
+    PG.api.clearCheck = function () {
+        return { removed: clearChecks(doc()) };
+    };
+
+    // Paragraph styles from a modular type scale. arg: { styles: [{ name, size, leading }], fonts }
+    PG.api.typeStyles = function (arg) {
+        var d = doc();
+        var display = findFont(arg.fonts && arg.fonts.headline);
+        var text = findFont(arg.fonts && arg.fonts.body);
+        for (var i = 0; i < arg.styles.length; i++) {
+            var s = arg.styles[i];
+            var name = 'PG ' + s.name;
+            var ps;
+            try {
+                ps = d.paragraphStyles.getByName(name);
+            } catch (e) {
+                ps = d.paragraphStyles.add(name);
+            }
+            ps.characterAttributes.size = s.size;
+            ps.characterAttributes.autoLeading = false;
+            ps.characterAttributes.leading = s.leading;
+            var font = /^(Display|Heading)/.test(s.name) ? display : text;
+            if (font) ps.characterAttributes.textFont = font;
+        }
+        return { styles: arg.styles.length };
+    };
+
+    // A new artboard (e.g. a platform size) to the right of the existing ones. arg: { w, h, name }
+    PG.api.addArtboard = function (arg) {
+        return withDocCoords(function () {
+            var d = doc();
+            var right = -Infinity;
+            var top = 0;
+            for (var i = 0; i < d.artboards.length; i++) {
+                var r = d.artboards[i].artboardRect;
+                if (r[2] > right) { right = r[2]; top = r[1]; }
+            }
+            var x = right + 100;
+            var ab = d.artboards.add([x, top, x + arg.w, top - arg.h]);
+            ab.name = arg.name || 'Artboard';
+            d.artboards.setActiveArtboardIndex(d.artboards.length - 1);
+            app.executeMenuCommand('fitin');
+            return { index: d.artboards.length - 1 };
+        });
+    };
+
+    // ---------- page layouts ----------
+    var LAYOUT_LAYER = 'Layout';
+    var LAYOUT_NOTE = 'portablegrid-layout:';
+    var STYLE_NAMES = {
+        kicker: 'PG Kicker', headline: 'PG Headline', standfirst: 'PG Standfirst', body: 'PG Body', caption: 'PG Caption',
+        pullquote: 'PG Pull quote', folio: 'PG Folio', runninghead: 'PG Running head', masthead: 'PG Masthead'
+    };
+
+    function findFont(name) {
+        if (!name) return null;
+        try {
+            return app.textFonts.getByName(name);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Paragraph styles the layout uses: restyle them once to change every page.
+    function layoutStyles(d, styles, fonts) {
+        var out = {};
+        var display = findFont(fonts.headline);
+        var text = findFont(fonts.body);
+        for (var role in STYLE_NAMES) {
+            if (!STYLE_NAMES.hasOwnProperty(role) || !styles[role]) continue;
+            var ps;
+            try {
+                ps = d.paragraphStyles.getByName(STYLE_NAMES[role]);
+            } catch (e) {
+                ps = d.paragraphStyles.add(STYLE_NAMES[role]);
+            }
+            var ca = ps.characterAttributes;
+            ca.size = styles[role].size;
+            ca.autoLeading = false;
+            ca.leading = styles[role].leading;
+            ca.capitalization = styles[role].caps ? FontCapsOption.ALLCAPS : FontCapsOption.NORMALCAPS;
+            var font = (role === 'headline' || role === 'masthead' || role === 'pullquote' || role === 'standfirst') ? display : text;
+            if (font) ca.textFont = font;
+            ps.paragraphAttributes.hyphenation = false;
+            out[role] = ps;
+        }
+        return out;
+    }
+
+    function placeholder(group, f) {
+        var g = group.groupItems.add();
+        g.name = 'Image';
+        var r = g.pathItems.rectangle(-f.y, f.x, f.w, f.h);
+        r.stroked = false;
+        r.fillColor = PG.hexColor('#D9DEE5');
+        var grey = PG.hexColor('#B8C0CC');
+        var a = line(g, f.x, f.y, f.x + f.w, f.y + f.h);
+        var b = line(g, f.x + f.w, f.y, f.x, f.y + f.h);
+        a.stroked = b.stroked = true;
+        a.filled = b.filled = false;
+        a.strokeColor = b.strokeColor = grey;
+        a.strokeWidth = b.strokeWidth = 0.5;
+        return g;
+    }
+
+    // arg: { pages: [{ key, label, elements }], styles, fonts: { headline, body }, replace }
+    PG.api.layout = function (arg) {
+        return withDocCoords(function () {
+            var d = doc();
+            var layer;
+            try {
+                layer = d.layers.getByName(LAYOUT_LAYER);
+            } catch (e) {
+                layer = d.layers.add();
+                layer.name = LAYOUT_LAYER;
+            }
+            layer.locked = false;
+            layer.visible = true;
+            var grid = findLayer(d);
+            if (grid) layer.move(grid, ElementPlacement.PLACEAFTER);
+            var styles = layoutStyles(d, arg.styles, arg.fonts || {});
+            var white = PG.hexColor('#FFFFFF');
+            var counts = { pages: 0, text: 0, images: 0 };
+
+            for (var p = 0; p < arg.pages.length; p++) {
+                var page = arg.pages[p];
+                if (arg.replace) {
+                    for (var k = layer.groupItems.length - 1; k >= 0; k--) {
+                        if (String(layer.groupItems[k].note) === LAYOUT_NOTE + page.key) layer.groupItems[k].remove();
+                    }
+                }
+                var group = layer.groupItems.add();
+                group.name = 'Layout - ' + page.label;
+                group.note = LAYOUT_NOTE + page.key;
+                var threads = {};
+                for (var i = 0; i < page.elements.length; i++) {
+                    var el = page.elements[i];
+                    var f = el.frame;
+                    if (el.kind === 'image') {
+                        placeholder(group, f);
+                        counts.images++;
+                    } else if (el.kind === 'rule') {
+                        var rule = line(group, f.x, f.y, f.x + f.w, f.y);
+                        rule.filled = false;
+                        rule.stroked = true;
+                        rule.strokeColor = PG.hexColor('#000000');
+                        rule.strokeWidth = 0.75;
+                    } else if (el.kind === 'text') {
+                        var rect = group.pathItems.rectangle(-f.y, f.x, f.w, f.h);
+                        var tf = group.textFrames.areaText(rect);
+                        tf.name = el.role;
+                        tf.firstBaseline = FirstBaselineType.BASELINELEADING;
+                        if (el.thread && threads[el.thread]) {
+                            threads[el.thread].nextFrame = tf;
+                        } else {
+                            tf.contents = el.text || ' ';
+                            if (styles[el.role]) styles[el.role].applyTo(tf.textRange, true);
+                            if (el.reverse) tf.textRange.characterAttributes.fillColor = white;
+                            if (el.align === 'right') tf.textRange.paragraphAttributes.justification = Justification.RIGHT;
+                        }
+                        if (el.thread) threads[el.thread] = tf;
+                        counts.text++;
+                    }
+                }
+                counts.pages++;
+            }
+            app.redraw();
+            return counts;
+        });
+    };
+
+    PG.api.clearLayout = function (arg) {
+        var d = doc();
+        var layer;
+        try {
+            layer = d.layers.getByName(LAYOUT_LAYER);
+        } catch (e) {
+            return { removed: 0 };
+        }
+        layer.locked = false;
+        var removed = 0;
+        for (var i = layer.groupItems.length - 1; i >= 0; i--) {
+            var note = String(layer.groupItems[i].note || '');
+            if (note.indexOf(LAYOUT_NOTE) !== 0) continue;
+            if (arg.keys && arg.keys.length) {
+                var hit = false;
+                for (var k = 0; k < arg.keys.length; k++) if (note === LAYOUT_NOTE + arg.keys[k]) hit = true;
+                if (!hit) continue;
+            }
+            layer.groupItems[i].remove();
+            removed++;
+        }
+        if (!layer.pageItems.length) layer.remove();
+        app.redraw();
+        return { removed: removed };
     };
 
     // Removes PortableGrid grids: those of the given keys, or all of them.
@@ -386,20 +769,28 @@
             opts.horizontalScale = opts.verticalScale = arg.scale || 100;
             var files = [];
             var width = String(arg.cells.length).length < 2 ? 2 : String(arg.cells.length).length;
-            for (var i = 0; i < arg.cells.length; i++) {
-                var c = arg.cells[i];
-                var ab = d.artboards.add([c.x, -c.y, c.x + c.w, -(c.y + c.h)]);
-                var index = d.artboards.length - 1;
-                try {
-                    d.artboards.setActiveArtboardIndex(index);
-                    var file = new File(folder.fsName + '/' + (arg.baseName || 'tile') + '-' + PG.pad(i + 1, width) + '.png');
-                    d.exportFile(file, ExportType.PNG24, opts);
-                    files.push(file.fsName);
-                } finally {
-                    ab.remove();
+            // The grid itself never ends up in the tiles.
+            var grid = findLayer(d);
+            var gridVisible = grid ? grid.visible : false;
+            if (grid) grid.visible = false;
+            try {
+                for (var i = 0; i < arg.cells.length; i++) {
+                    var c = arg.cells[i];
+                    var ab = d.artboards.add([c.x, -c.y, c.x + c.w, -(c.y + c.h)]);
+                    var index = d.artboards.length - 1;
+                    try {
+                        d.artboards.setActiveArtboardIndex(index);
+                        var file = new File(folder.fsName + '/' + (arg.baseName || 'tile') + '-' + PG.pad(i + 1, width) + '.png');
+                        d.exportFile(file, ExportType.PNG24, opts);
+                        files.push(file.fsName);
+                    } finally {
+                        ab.remove();
+                    }
                 }
+            } finally {
+                if (grid) grid.visible = gridVisible;
+                d.artboards.setActiveArtboardIndex(active);
             }
-            d.artboards.setActiveArtboardIndex(active);
             return { files: files, folder: folder.fsName };
         });
     };

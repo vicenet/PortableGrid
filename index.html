@@ -81,7 +81,18 @@
         <select data-k="rows.align"><option value="center">Centre</option><option value="start">Top</option><option value="end">Bottom</option></select>
       </label>
     </details>
+    <label class="check" title="Rows and row gutters become whole numbers of baselines, so text lines up across modules"><input type="checkbox" data-k="rows.lock"> Lock rows to the baseline grid</label>
     <p class="hint">Any field takes units: <code>20</code>, <code>5mm</code>, <code>10%</code>.</p>
+  </details>
+
+  <details class="card" open>
+    <summary>Harmonious grid <span class="hint-inline">from one number</span></summary>
+    <p class="hint">Enter your body text size: baseline, margins, gutters and rows are all derived from it and locked together.</p>
+    <div class="row tight">
+      <label>Body text (pt)<input id="bodySize" type="number" min="4" max="72" step="0.5" value="10"></label>
+      <label>Columns<select id="harmonyColumns"><option>4</option><option selected>6</option><option>8</option><option>12</option></select></label>
+      <button id="harmonize" class="primary">Build</button>
+    </div>
   </details>
 
   <details class="card">
@@ -139,6 +150,7 @@
       <label class="check"><input type="checkbox" data-k="output.guides"> Guides</label>
       <label class="check"><input type="checkbox" data-k="output.cells"> Cells</label>
       <label class="check ai-only"><input type="checkbox" data-k="output.artboards"> Artboard per cell</label>
+      <label class="check" title="Platform safe zones from the creator presets"><input type="checkbox" data-k="output.zones"> Safe zones</label>
       <label class="check ai-only" title="Draw baseline, drawing-grid and composition lines as guides instead of coloured lines"><input type="checkbox" data-k="style.asGuides"> Lines as guides</label>
     </div>
     <div class="row style-row">
@@ -153,6 +165,73 @@
       <button class="big clear-btn" id="clear">Clear</button>
     </div>
   </section>
+
+  <section class="card hidden" id="sizeCard">
+    <div class="row tight">
+      <span class="hint" id="sizeInfo"></span>
+      <button id="addArtboard">Add artboard</button>
+    </div>
+  </section>
+
+  <details class="card ai-only" id="smartCard" open>
+    <summary>Clean-up tools</summary>
+    <div class="tool">
+      <div class="tool-title">Snap to grid</div>
+      <p class="hint">Moves the selection onto the nearest columns and rows; text snaps its first baseline to the baseline grid.</p>
+      <div class="row tight">
+        <select id="snapMode"><option value="move">Move only</option><option value="fit">Move &amp; resize to the grid</option></select>
+        <button id="snap">Snap</button>
+      </div>
+    </div>
+    <div class="tool">
+      <div class="tool-title">Grid check</div>
+      <p class="hint">Scores how much of the page sits on the grid and outlines everything that doesn't.</p>
+      <div class="row tight">
+        <span class="hint" id="checkScore"></span>
+        <button id="check">Check</button>
+        <button id="clearCheck">Clear marks</button>
+      </div>
+    </div>
+    <div class="tool">
+      <div class="tool-title">Type styles on the grid</div>
+      <p class="hint">Paragraph styles from a type scale (uses Body text size); every leading is a whole number of baselines.</p>
+      <div class="row tight">
+        <select id="typeRatio"></select>
+        <button id="typeStyles">Create styles</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="card ai-only" id="layoutCard">
+    <summary>Page layouts</summary>
+    <p class="hint">Builds a magazine page on the grid: image frames, threaded text locked to the baseline grid,
+      folios and editable <code>PG</code> paragraph styles. Set a baseline grid first for the best result.</p>
+    <label>Layout
+      <select id="layoutRecipe"></select>
+    </label>
+    <div class="row">
+      <label>Text columns
+        <select id="layoutColumns">
+          <option value="auto">Auto</option><option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option><option value="6">6</option>
+        </select>
+      </label>
+      <label title="Extends full-bleed images past the page edge">Bleed<input id="layoutBleed" placeholder="0, e.g. 3mm"></label>
+    </div>
+    <label>Magazine title (running head, masthead)<input id="layoutTitle" placeholder="Magazine"></label>
+    <div class="row">
+      <label title="PostScript name, e.g. Georgia-Bold">Headline font<input id="layoutHeadFont" placeholder="default"></label>
+      <label title="PostScript name, e.g. Georgia">Body font<input id="layoutBodyFont" placeholder="default"></label>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="layoutFolio" checked> Page numbers</label>
+      <label class="check"><input type="checkbox" id="layoutRunning" checked> Running head</label>
+    </div>
+    <div class="row">
+      <button class="primary big" id="buildLayout">Build layout</button>
+      <button class="big clear-btn" id="clearLayout">Remove</button>
+    </div>
+  </details>
 
   <details class="card" id="toolsCard">
     <summary>Tools</summary>
@@ -198,6 +277,7 @@
   <div id="status" class="status"></div>
 
   <script src="core/grid.js"></script>
+  <script src="core/layouts.js"></script>
   <script src="js/bridge.js"></script>
   <script src="js/render.js"></script>
   <script src="js/panel.js"></script>

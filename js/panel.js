@@ -20,14 +20,14 @@
     margin: { top: '', right: '', bottom: '', left: '' },
     mirror: false,
     columns: { count: '', gutter: '', size: '', pattern: '', align: 'center' },
-    rows: { count: '', gutter: '', size: '', pattern: '', align: 'center' },
+    rows: { count: '', gutter: '', size: '', pattern: '', align: 'center', lock: false },
     baseline: { size: '', offset: '' },
     pattern: { type: 'none', size: '' },
     overlays: { thirds: false, phi: false, spiral: false, diagonals: false, armature: false, triangles: false, flipX: false, flipY: false },
     custom: { vertical: '', horizontal: '' },
     edges: true,
     center: false,
-    output: { guides: true, cells: false, artboards: false },
+    output: { guides: true, cells: false, artboards: false, zones: true },
     style: { color: '#00a3ff', weight: '', lineOpacity: '', cellOpacity: '', asGuides: false },
   };
   const OVERLAYS = ['thirds', 'phi', 'spiral', 'diagonals', 'armature', 'triangles'];
@@ -38,6 +38,8 @@
   let targetError = '';
   let busy = false;
   let builtIn = [];
+  // Parts of a preset that have no form fields: platform safe zones and the artboard size.
+  let extras = { zones: [], size: null };
   let mine = [];
 
   // ---------- small helpers ----------
@@ -88,12 +90,22 @@
     spec.output.baseline = !!base && base.value > 0;
     spec.output.pattern = spec.pattern.type !== 'none' && !!Core.parseLength(spec.pattern.size);
     spec.output.overlays = OVERLAYS.some((k) => spec.overlays[k]);
+    spec.zones = extras.zones;
+    spec.size = extras.size;
+    spec.output.zones = !!spec.output.zones && spec.zones.length > 0;
     return spec;
   }
 
   function writeSpec(spec) {
     const full = merge(DEFAULTS, spec);
-    $('[data-k]').forEach((el) => {
+    extras = { zones: Array.isArray(spec.zones) ? spec.zones : [], size: spec.size || null };
+    const sizeCard = $('#sizeCard');
+    sizeCard.classList.toggle('hidden', !extras.size);
+    if (extras.size) {
+      $('#sizeInfo').textContent = `${spec.name || 'This preset'} is designed for ${extras.size.w} × ${extras.size.h} px.`;
+      $('#addArtboard').textContent = hostInfo.app === 'photoshop' ? 'New document' : 'Add artboard';
+    }
+    $$('[data-k]').forEach((el) => {
       const v = getPath(full, el.dataset.k);
       if (el.type === 'checkbox') el.checked = !!v;
       else if (el.type === 'color') el.value = /^#[0-9a-f]{6}$/i.test(v || '') ? v : DEFAULTS.style.color;
@@ -107,7 +119,7 @@
 
   function validate() {
     let ok = true;
-    $$('input[data-k]:not([type=checkbox]):not([type=number])').forEach((el) => {
+    $$('input[data-k]:not([type=checkbox]):not([type=number]):not([type=color])').forEach((el) => {
       const k = el.dataset.k;
       const v = el.value.trim();
       let bad = false;
@@ -195,7 +207,7 @@
   }
 
   function updateIndicators(spec) {
-    $('[data-on]').forEach((el) => el.classList.toggle('active', !!spec.output[el.dataset.on]));
+    $$('[data-on]').forEach((el) => el.classList.toggle('active', !!spec.output[el.dataset.on]));
   }
 
   async function refreshTargets() {
@@ -247,11 +259,11 @@
     updateIndicators(spec);
     const box = result.box;
     const pad = 14;
-    const scale = Math.min((cw - pad * 2) / box.w, (ch - pad * 2 - 12) / box.h);
-    const view = { scale, ox: (cw - box.w * scale) / 2 - box.x * scale, oy: (ch - 12 - box.h * scale) / 2 - box.y * scale };
+    const scale = Math.min((cw - pad * 2) / box.w, (ch - pad * 2) / box.h);
+    const view = { scale, ox: (cw - box.w * scale) / 2 - box.x * scale, oy: (ch - box.h * scale) / 2 - box.y * scale };
     GridRender.draw(g, result, view, { color: spec.style.color, weight: 1, cellAlpha: 0.22, lineAlpha: 0.75 }, {
       background: '#f4f4f4', preview: true, cells: true, guides: true,
-      baseline: spec.output.baseline, pattern: spec.output.pattern, overlays: spec.output.overlays,
+      baseline: spec.output.baseline, pattern: spec.output.pattern, overlays: spec.output.overlays, zones: spec.output.zones,
     });
 
     const unit = $('#unit').value;
@@ -298,7 +310,7 @@
     const spec = readSpec();
     const output = spec.output;
     if (hostInfo.app !== 'illustrator') output.artboards = false;
-    if (!output.guides && !output.cells && !output.baseline && !output.pattern && !output.overlays && !output.artboards) {
+    if (!output.guides && !output.cells && !output.baseline && !output.pattern && !output.overlays && !output.zones && !output.artboards) {
       throw new Error('Nothing to draw: tick Guides or Cells, or set up a baseline, drawing grid or composition.');
     }
     const grids = await freshLayouts();
@@ -308,7 +320,7 @@
       // Photoshop gets the lines as one transparent layer rendered here.
       const info = await Host.call('info');
       const png = GridRender.overlayPng(grids, { w: info.width, h: info.height },
-        { color: st.color, weight: st.weight }, { baseline: output.baseline, pattern: output.pattern, overlays: output.overlays });
+        { color: st.color, weight: st.weight }, { baseline: output.baseline, pattern: output.pattern, overlays: output.overlays, zones: output.zones });
       if (png) {
         const path = Host.node('path');
         arg.overlayFile = path.join(Host.node('os').tmpdir(), 'portablegrid-' + Date.now() + '.png').split(path.sep).join('/');
@@ -326,6 +338,7 @@
     if (r.cells) parts.push(plural(r.cells, 'cell'));
     if (r.baselines) parts.push(plural(r.baselines, 'baseline'));
     if (r.lines) parts.push(plural(r.lines, 'line'));
+    if (r.zones) parts.push(plural(r.zones, 'safe zone'));
     if (r.artboards) parts.push(plural(r.artboards, 'artboard'));
     return `Drew ${parts.join(', ') || 'nothing'}.`;
   }
@@ -351,6 +364,114 @@
     if (cells.length > 400) throw new Error(`That would make ${cells.length} tiles. Use fewer columns or rows.`);
     const r = await Host.call('split', { cells, keepOriginal: $('#keepOriginal').checked });
     return `Split into ${plural(r.tiles, 'tile')}.`;
+  }
+
+  // ---------- clean-up tools ----------
+  function gridLines(list) {
+    const all = (k) => [...new Set(list.reduce((out, l) => out.concat(l[k]), []))].sort((a, b) => a - b);
+    // Column and row edges count as grid lines even when margin guides are off.
+    const v = all('vertical');
+    const h = all('horizontal');
+    list.forEach((l) => {
+      l.cells.forEach((c) => { v.push(c.x, c.x + c.w); h.push(c.y, c.y + c.h); });
+      v.push(l.content.x, l.content.x + l.content.w);
+      h.push(l.content.y, l.content.y + l.content.h);
+    });
+    const uniq = (a) => [...new Set(a.map((n) => Math.round(n * 100) / 100))].sort((x, y) => x - y);
+    return { vertical: uniq(v), horizontal: uniq(h), baselines: all('baselines') };
+  }
+
+  async function snap() {
+    const lines = gridLines(await freshLayouts());
+    const r = await Host.call('snap', Object.assign(lines, { mode: $('#snapMode').value }));
+    return `Snapped ${plural(r.snapped, 'object')} to the grid.`;
+  }
+
+  async function check() {
+    const list = await freshLayouts();
+    const r = await Host.call('check', Object.assign(gridLines(list), { boxes: list.map((l) => l.box), mark: true, tolerance: 0.5 }));
+    const el = $('#checkScore');
+    el.textContent = r.total ? `${r.score}% on grid (${r.total - r.off} of ${r.total})` : 'Nothing to check here.';
+    el.className = 'hint ' + (r.score >= 90 ? 'good' : 'bad');
+    if (!r.total) return 'No objects on this artboard yet.';
+    return r.off ? `${plural(r.off, 'object')} off the grid, outlined in red. Try Snap.` : 'Everything sits on the grid.';
+  }
+
+  async function clearCheck() {
+    await Host.call('clearCheck');
+    $('#checkScore').textContent = '';
+    return 'Cleared the check marks.';
+  }
+
+  async function typeStyles() {
+    const spec = readSpec();
+    const body = parseFloat($('#bodySize').value) || 10;
+    const base = Core.toDoc(spec.baseline.size, context()) || Math.round(body * 1.4 * 2) / 2;
+    const scale = Core.typeScale(body, base, +$('#typeRatio').value);
+    const r = await Host.call('typeStyles', {
+      styles: scale, fonts: { headline: $('#layoutHeadFont').value.trim(), body: $('#layoutBodyFont').value.trim() },
+    });
+    return `Created ${plural(r.styles, 'paragraph style')} (PG Display … PG Caption) on a ${+base.toFixed(2)} pt baseline.`;
+  }
+
+  async function harmonize() {
+    const body = parseFloat($('#bodySize').value) || 10;
+    const spec = merge(readSpec(), Core.harmonize(body, +$('#harmonyColumns').value));
+    spec.zones = extras.zones;
+    spec.size = extras.size;
+    writeSpec(spec);
+    $('#unit').value = 'pt';
+    renderPresets('');
+    drawPreview();
+    remember();
+    status(`Harmonious grid: ${spec.baseline.size} baseline, ${spec.columns.count} columns, rows locked. Click Draw grid.`, 'ok');
+  }
+
+  async function addArtboard() {
+    if (!extras.size) return '';
+    const name = (presetFor($('#preset').value) || {}).name || 'Artboard';
+    await Host.call('addArtboard', { w: extras.size.w, h: extras.size.h, name });
+    if (hostInfo.app === 'illustrator') { $('#target').value = 'artboard'; }
+    targets = [];
+    await refreshTargets();
+    return `Added a ${extras.size.w} × ${extras.size.h} ${hostInfo.app === 'photoshop' ? 'document' : 'artboard'}. Click Draw grid.`;
+  }
+
+  // Magazine page layouts built on the current grid (Illustrator).
+  async function buildLayout() {
+    const spec = readSpec();
+    const grids = await freshLayouts();
+    const facing = !!spec.mirror && ['artboard', 'artboards'].includes($('#target').value);
+    const bleed = Core.toDoc($('#layoutBleed').value || 0, context());
+    let styles = null;
+    const pages = grids.map((g) => {
+      const index = g.key.startsWith('ab') ? +g.key.slice(2) : 0;
+      const built = PortableGridLayouts.build(g, {
+        recipe: $('#layoutRecipe').value,
+        textColumns: $('#layoutColumns').value,
+        side: facing ? (index % 2 === 1 ? 'left' : 'right') : null,
+        page: index + 1,
+        folio: $('#layoutFolio').checked,
+        runningHead: $('#layoutRunning').checked,
+        title: $('#layoutTitle').value.trim() || 'Magazine',
+        bleed,
+      });
+      styles = styles || built.styles;
+      return { key: g.key, label: g.label, elements: built.elements };
+    });
+    const r = await Host.call('layout', {
+      pages, styles, replace: $('#replace').checked,
+      fonts: { headline: $('#layoutHeadFont').value.trim(), body: $('#layoutBodyFont').value.trim() },
+    });
+    const noBaseline = !spec.output.baseline ? ' Tip: set a baseline grid to lock the text to it.' : '';
+    return `Built ${plural(r.pages, 'page')}: ${plural(r.text, 'text frame')}, ${plural(r.images, 'image frame')}.${noBaseline}`;
+  }
+
+  async function clearLayout() {
+    const t = $('#target').value;
+    const keys = t === 'artboard' || t === 'artboards' ? targets.map((x) => x.key) : [];
+    const r = await Host.call('clearLayout', { keys });
+    return r.removed ? `Removed ${plural(r.removed, 'layout')}.` : 'No PortableGrid layout here.';
   }
 
   async function exportTiles() {
@@ -439,6 +560,18 @@
     $('#arrange').addEventListener('click', () => run('Arranging', arrange));
     $('#split').addEventListener('click', () => run('Splitting', split));
     $('#exportTiles').addEventListener('click', () => run('Exporting', exportTiles));
+    $('#buildLayout').addEventListener('click', () => run('Building layout', buildLayout));
+    $('#snap').addEventListener('click', () => run('Snapping', snap));
+    $('#check').addEventListener('click', () => run('Checking', check));
+    $('#clearCheck').addEventListener('click', () => run('Clearing', clearCheck));
+    $('#typeStyles').addEventListener('click', () => run('Creating styles', typeStyles));
+    $('#harmonize').addEventListener('click', () => harmonize());
+    $('#addArtboard').addEventListener('click', () => run('Adding', addArtboard));
+    $('#typeRatio').innerHTML = Object.entries(Core.RATIOS)
+      .map(([name, v]) => `<option value="${v}"${name === 'Major third' ? ' selected' : ''}>${name} (${(+v).toFixed(3).replace(/0+$/, '')})</option>`).join('');
+    $('#clearLayout').addEventListener('click', () => run('Removing layout', clearLayout));
+    $('#layoutRecipe').innerHTML = Object.entries(PortableGridLayouts.RECIPES)
+      .map(([v, label]) => `<option value="${v}">${label}</option>`).join('');
 
     window.addEventListener('resize', drawPreview);
     window.addEventListener('focus', refreshTargets);
