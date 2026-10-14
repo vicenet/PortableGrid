@@ -361,10 +361,16 @@
 
   async function clearGrid() {
     const t = $('#target').value;
-    const keys = hostInfo.app === 'illustrator' && (t === 'artboard' || t === 'artboards') ? targets.map((x) => x.key) : [];
-    const r = await Host.call('clear', { keys });
-    if (hostInfo.app === 'photoshop') return `Removed ${plural(r.removed, 'guide')} and the grid layers.`;
-    return r.removed ? `Removed ${plural(r.removed, 'grid')}.` : 'No PortableGrid grid here.';
+    if (hostInfo.app === 'photoshop') {
+      const r = await Host.call('clear', {});
+      return `Removed ${plural(r.removed, 'guide')} and the grid layers.`;
+    }
+    // Artboards: fresh targets (the preview only refreshes while you use the panel), and every grid on them,
+    // including grids drawn on a selection. Selection targets: every PortableGrid grid in the document.
+    const onBoards = t === 'artboard' || t === 'artboards';
+    if (onBoards) targets = await Host.call('targets', { target: t });
+    const r = await Host.call('clear', onBoards ? { keys: targets.map((x) => x.key), boxes: targets.map((x) => x.box) } : {});
+    return r.removed ? `Removed ${plural(r.removed, 'grid')}.` : 'No PortableGrid grid on this artboard. (Grid check marks: use Clear marks.)';
   }
 
   async function arrange() {

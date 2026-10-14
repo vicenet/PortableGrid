@@ -448,7 +448,8 @@
             var total = 0;
             for (var li = 0; li < d.layers.length; li++) {
                 var layer = d.layers[li];
-                if (layer.name === LAYER || !layer.visible) continue;
+                // PortableGrid's own grid and generated layouts are on the grid by construction.
+                if (layer.name === LAYER || layer.name === LAYOUT_LAYER || !layer.visible) continue;
                 for (var i = 0; i < layer.pageItems.length; i++) {
                     var it = layer.pageItems[i];
                     if (it.guides || it.hidden || it.parent !== layer) continue;
@@ -854,6 +855,24 @@
         var before = layer.groupItems.length;
         if (arg.keys && arg.keys.length) {
             for (var i = 0; i < arg.keys.length; i++) removeGrids(layer, arg.keys[i]);
+            // Grids drawn on a selection or on objects that sit on these artboards go too.
+            if (arg.boxes && arg.boxes.length) {
+                withDocCoords(function () {
+                    for (var g = layer.groupItems.length - 1; g >= 0; g--) {
+                        var grp = layer.groupItems[g];
+                        var note = String(grp.note || '');
+                        if (note.indexOf(NOTE) !== 0 || /^portablegrid:ab\d+$/.test(note)) continue;
+                        var e = edges(grp);
+                        for (var k = 0; k < arg.boxes.length; k++) {
+                            var bx = arg.boxes[k];
+                            if (e.r > bx.x && e.l < bx.x + bx.w && e.b > bx.y && e.t < bx.y + bx.h) {
+                                grp.remove();
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
         } else {
             removeGrids(layer, null);
         }
