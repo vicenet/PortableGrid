@@ -1,0 +1,23 @@
+PortableGrid - installation
+=============================
+
+Requires Adobe Illustrator 2021 or later and/or Photoshop 2021 or later.
+
+WINDOWS
+  1. Unzip this download.
+  2. Double-click "Install PortableGrid.bat".
+  3. Restart Illustrator/Photoshop and open Window > Extensions > PortableGrid
+     (Photoshop: Window > Extensions (Legacy) > PortableGrid).
+  You can also install the .zxp with any ZXP installer (e.g. Anastasiy's Extension Manager or aescripts ZXP Installer).
+
+MACOS
+  1. Unzip this download.
+  2. Right-click "Install PortableGrid.command" > Open (the first time macOS asks you to confirm).
+  3. Restart Illustrator/Photoshop and open Window > Extensions > PortableGrid.
+
+FIRST STEPS
+  - Open a document and choose a preset (for example "Web: 12 columns").
+  - Pick where to draw (artboard, all artboards or selection) and click Draw grid.
+  - Clear removes the grid again.
+
+PortableGrid is open source (GPL-3.0): https://github.com/vicenet/PortableGrid

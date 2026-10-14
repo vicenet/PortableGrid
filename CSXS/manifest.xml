@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.portablegrid" ExtensionBundleVersion="0.1.0"
+    ExtensionBundleName="PortableGrid" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <ExtensionList>
+        <Extension Id="com.portablegrid.panel" Version="0.1.0" />
+    </ExtensionList>
+    <ExecutionEnvironment>
+        <HostList>
+            <Host Name="ILST" Version="[25.0,99.9]" />
+            <Host Name="PHXS" Version="[22.0,99.9]" />
+            <Host Name="PHSP" Version="[22.0,99.9]" />
+        </HostList>
+        <LocaleList>
+            <Locale Code="All" />
+        </LocaleList>
+        <RequiredRuntimeList>
+            <RequiredRuntime Name="CSXS" Version="11.0" />
+        </RequiredRuntimeList>
+    </ExecutionEnvironment>
+    <DispatchInfoList>
+        <Extension Id="com.portablegrid.panel">
+            <DispatchInfo>
+                <Resources>
+                    <MainPath>./index.html</MainPath>
+                    <CEFCommandLine>
+                        <Parameter>--enable-nodejs</Parameter>
+                        <Parameter>--mixed-context</Parameter>
+                    </CEFCommandLine>
+                </Resources>
+                <Lifecycle>
+                    <AutoVisible>true</AutoVisible>
+                </Lifecycle>
+                <UI>
+                    <Type>Panel</Type>
+                    <Menu>PortableGrid</Menu>
+                    <Geometry>
+                        <Size>
+                            <Width>320</Width>
+                            <Height>720</Height>
+                        </Size>
+                        <MinSize>
+                            <Width>280</Width>
+                            <Height>300</Height>
+                        </MinSize>
+                        <MaxSize>
+                            <Width>800</Width>
+                            <Height>2000</Height>
+                        </MaxSize>
+                    </Geometry>
+                    <Icons>
+                        <Icon Type="Normal">./icons/panel-normal.png</Icon>
+                        <Icon Type="RollOver">./icons/panel-rollover.png</Icon>
+                        <Icon Type="DarkNormal">./icons/panel-dark.png</Icon>
+                        <Icon Type="DarkRollOver">./icons/panel-darkrollover.png</Icon>
+                    </Icons>
+                </UI>
+            </DispatchInfo>
+        </Extension>
+    </DispatchInfoList>
+</ExtensionManifest>

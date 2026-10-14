@@ -1,0 +1,105 @@
+name: Release installers
+
+# Builds the Windows setup (.exe) and macOS installer (.pkg) and attaches them to the GitHub release.
+# Runs on version tags (v1.2.3), or manually for an existing tag.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach installers to (e.g. v0.3.0)
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: Make sure the release exists
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 30
+    steps:
+      - name: Check the tag
+        run: |
+          if ! printf %s "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::Not a version tag: $TAG"; exit 1
+          fi
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "PortableGrid ${TAG#v}" \
+              --notes "Download the installer for your system below. See the README for details."
+
+  windows:
+    name: Windows installer (.exe)
+    needs: release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Tag pushes build that tag; manual runs build the branch they were started from.
+          ref: ${{ github.event_name == 'push' && github.ref || '' }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/package.js
+      - name: Build setup with Inno Setup
+        shell: pwsh
+        run: |
+          $v = node -p "require('./package.json').version"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=$v" "/DSourceDir=$PWD\dist\PortableGrid-$v" installer\windows\PortableGrid.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Attach to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload $env:TAG (Get-Item dist\*-setup.exe).FullName --clobber --repo $env:GITHUB_REPOSITORY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installer
+          path: dist/*-setup.exe
+
+  macos:
+    name: macOS installer (.pkg)
+    needs: release
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Tag pushes build that tag; manual runs build the branch they were started from.
+          ref: ${{ github.event_name == 'push' && github.ref || '' }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/package.js
+      - run: sh installer/macos/build-pkg.sh
+      - name: Check the package
+        run: pkgutil --payload-files dist/*.pkg | head -5 || pkgutil --check-signature dist/*.pkg || true
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/*.pkg --clobber --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-installer
+          path: dist/*.pkg

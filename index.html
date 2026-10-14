@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PortableGrid</title>
+  <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+  <header class="top">
+    <strong class="app-title"><img src="icons/logo.svg" alt="" width="18" height="18">PortableGrid</strong>
+    <span class="badge" id="hostBadge">…</span>
+  </header>
+
+  <div id="notice" class="notice" hidden></div>
+
+  <div class="bar">
+    <select id="preset" title="Presets"></select>
+    <button id="savePreset" title="Save the current settings as a preset">Save</button>
+    <button id="deletePreset" title="Delete this preset">✕</button>
+  </div>
+
+  <div class="row">
+    <label>Draw into
+      <select id="target"></select>
+    </label>
+    <label>Units
+      <select id="unit">
+        <option value="px">px</option>
+        <option value="pt">pt</option>
+        <option value="mm">mm</option>
+        <option value="cm">cm</option>
+        <option value="in">in</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="preview">
+    <canvas id="preview"></canvas>
+    <div class="preview-info" id="previewInfo"></div>
+  </div>
+
+  <details class="card" open>
+    <summary>Margins</summary>
+    <div class="row four">
+      <label>Top<input data-k="margin.top" placeholder="0"></label>
+      <label>Right<input data-k="margin.right" placeholder="0"></label>
+      <label>Bottom<input data-k="margin.bottom" placeholder="0"></label>
+      <label>Left<input data-k="margin.left" placeholder="0"></label>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="linkMargins"> Same on all sides</label>
+      <label class="check ai-only" title="Swaps left and right margins on every second artboard"><input type="checkbox" data-k="mirror"> Facing pages</label>
+    </div>
+  </details>
+
+  <details class="card" open>
+    <summary>Columns &amp; rows</summary>
+    <div class="sub-title">Columns</div>
+    <div class="row">
+      <label>Count<input data-k="columns.count" type="number" min="0" max="500" placeholder="0"></label>
+      <label>Gutter<input data-k="columns.gutter" placeholder="0"></label>
+      <label title="Leave blank to fill the width">Width<input data-k="columns.size" placeholder="auto"></label>
+    </div>
+    <details class="sub">
+      <summary>Uneven columns &amp; alignment</summary>
+      <label title="Replaces Count: fr = share of the free space, or fixed sizes">Pattern<input data-k="columns.pattern" placeholder="e.g. 2fr 1fr 1fr  ·  240px auto"></label>
+      <label>Fixed-width alignment
+        <select data-k="columns.align"><option value="center">Centre</option><option value="start">Left</option><option value="end">Right</option></select>
+      </label>
+    </details>
+    <div class="sub-title">Rows</div>
+    <div class="row">
+      <label>Count<input data-k="rows.count" type="number" min="0" max="500" placeholder="0"></label>
+      <label>Gutter<input data-k="rows.gutter" placeholder="0"></label>
+      <label title="Leave blank to fill the height">Height<input data-k="rows.size" placeholder="auto"></label>
+    </div>
+    <details class="sub">
+      <summary>Uneven rows &amp; alignment</summary>
+      <label title="Replaces Count: fr = share of the free space, or fixed sizes">Pattern<input data-k="rows.pattern" placeholder="e.g. 1 0.618 1  ·  120px auto"></label>
+      <label>Fixed-height alignment
+        <select data-k="rows.align"><option value="center">Centre</option><option value="start">Top</option><option value="end">Bottom</option></select>
+      </label>
+    </details>
+    <p class="hint">Any field takes units: <code>20</code>, <code>5mm</code>, <code>10%</code>.</p>
+  </details>
+
+  <details class="card">
+    <summary>Baseline grid <span class="on" data-on="baseline"></span></summary>
+    <div class="row">
+      <label>Line every<input data-k="baseline.size" placeholder="off, e.g. 12pt"></label>
+      <label>Start offset<input data-k="baseline.offset" placeholder="0"></label>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>Drawing grid <span class="on" data-on="pattern"></span></summary>
+    <div class="row">
+      <label>Type
+        <select data-k="pattern.type">
+          <option value="none">None</option>
+          <option value="square">Square (graph paper)</option>
+          <option value="dots">Dots</option>
+          <option value="isometric">Isometric</option>
+          <option value="triangle">Triangles</option>
+          <option value="hex">Hexagons</option>
+        </select>
+      </label>
+      <label>Size<input data-k="pattern.size" placeholder="e.g. 8px"></label>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>Composition <span class="on" data-on="overlays"></span></summary>
+    <div class="checks">
+      <label class="check"><input type="checkbox" data-k="overlays.thirds"> Rule of thirds</label>
+      <label class="check"><input type="checkbox" data-k="overlays.phi"> Phi grid</label>
+      <label class="check"><input type="checkbox" data-k="overlays.spiral"> Golden spiral</label>
+      <label class="check"><input type="checkbox" data-k="overlays.diagonals"> Diagonals</label>
+      <label class="check"><input type="checkbox" data-k="overlays.armature"> Harmonic armature</label>
+      <label class="check"><input type="checkbox" data-k="overlays.triangles"> Golden triangles</label>
+      <label class="check"><input type="checkbox" data-k="overlays.flipX"> Flip horizontally</label>
+      <label class="check"><input type="checkbox" data-k="overlays.flipY"> Flip vertically</label>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>Extra guides</summary>
+    <label>Vertical guides<input data-k="custom.vertical" placeholder="e.g. 38.2%, 61.8%, 120px"></label>
+    <label>Horizontal guides<input data-k="custom.horizontal" placeholder="e.g. 50%"></label>
+    <div class="checks">
+      <label class="check"><input type="checkbox" data-k="edges"> Margin guides</label>
+      <label class="check"><input type="checkbox" data-k="center"> Centre guides</label>
+    </div>
+  </details>
+
+  <section class="card">
+    <div class="card-title">Draw</div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" data-k="output.guides"> Guides</label>
+      <label class="check"><input type="checkbox" data-k="output.cells"> Cells</label>
+      <label class="check ai-only"><input type="checkbox" data-k="output.artboards"> Artboard per cell</label>
+      <label class="check ai-only" title="Draw baseline, drawing-grid and composition lines as guides instead of coloured lines"><input type="checkbox" data-k="style.asGuides"> Lines as guides</label>
+    </div>
+    <div class="row style-row">
+      <label title="Colour of cells and lines">Colour<input type="color" data-k="style.color"></label>
+      <label>Line weight<input data-k="style.weight" placeholder="0.5pt"></label>
+      <label>Lines %<input data-k="style.lineOpacity" type="number" min="5" max="100" placeholder="70"></label>
+      <label>Cells %<input data-k="style.cellOpacity" type="number" min="5" max="100" placeholder="20"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="replace" checked> <span id="replaceLabel">Replace existing grid</span></label>
+    <div class="row">
+      <button class="primary big" id="draw">Draw grid</button>
+      <button class="big clear-btn" id="clear">Clear</button>
+    </div>
+  </section>
+
+  <details class="card" id="toolsCard">
+    <summary>Tools</summary>
+    <div class="tool ai-only">
+      <div class="tool-title">Arrange selection into cells</div>
+      <p class="hint">Places the selected objects into the grid cells, in reading order.</p>
+      <div class="row tight">
+        <select id="arrangeMode">
+          <option value="fit">Fit inside</option>
+          <option value="fill">Fill and crop</option>
+          <option value="stretch">Stretch</option>
+        </select>
+        <button id="arrange">Arrange</button>
+      </div>
+    </div>
+    <div class="tool ai-only">
+      <div class="tool-title">Split selection into tiles</div>
+      <p class="hint">Cuts the selected artwork into one clipped tile per cell. Gutters become gaps.</p>
+      <div class="row tight">
+        <label class="check"><input type="checkbox" id="keepOriginal"> Keep a hidden original</label>
+        <button id="split">Split</button>
+      </div>
+    </div>
+    <div class="tool">
+      <div class="tool-title">Export tiles</div>
+      <p class="hint">Saves every cell as its own image, numbered in reading order: ideal for Instagram grids and carousels.</p>
+      <div class="row tight">
+        <select id="exportFormat" class="ps-only">
+          <option value="png">PNG</option>
+          <option value="jpg">JPEG</option>
+        </select>
+        <select id="exportScale" class="ai-only" title="Export resolution">
+          <option value="100">1× (72 ppi)</option>
+          <option value="200">2× (144 ppi)</option>
+          <option value="300" selected>3× (216 ppi)</option>
+          <option value="416.67">300 ppi</option>
+        </select>
+        <button id="exportTiles">Export…</button>
+      </div>
+    </div>
+  </details>
+
+  <div id="status" class="status"></div>
+
+  <script src="core/grid.js"></script>
+  <script src="js/bridge.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/panel.js"></script>
+</body>
+</html>

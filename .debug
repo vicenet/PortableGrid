@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionList>
+    <Extension Id="com.portablegrid.panel">
+        <HostList>
+            <Host Name="ILST" Port="8091" />
+            <Host Name="PHXS" Port="8092" />
+            <Host Name="PHSP" Port="8093" />
+        </HostList>
+    </Extension>
+</ExtensionList>
