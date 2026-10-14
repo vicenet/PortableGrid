@@ -28,7 +28,7 @@
     edges: true,
     center: false,
     output: { guides: true, cells: false, artboards: false, zones: true },
-    style: { color: '#00a3ff', weight: '', lineOpacity: '', cellOpacity: '', asGuides: false },
+    style: { color: '#00a3ff', guideColor: '#4affff', guideMode: 'guides', weight: '', lineOpacity: '', cellOpacity: '', asGuides: false },
   };
   const OVERLAYS = ['thirds', 'phi', 'spiral', 'diagonals', 'armature', 'triangles'];
   const LAST_KEY = 'portablegrid.last';
@@ -116,7 +116,7 @@
     $$('[data-k]').forEach((el) => {
       const v = getPath(full, el.dataset.k);
       if (el.type === 'checkbox') el.checked = !!v;
-      else if (el.type === 'color') el.value = /^#[0-9a-f]{6}$/i.test(v || '') ? v : DEFAULTS.style.color;
+      else if (el.type === 'color') el.value = /^#[0-9a-f]{6}$/i.test(v || '') ? v : getPath(DEFAULTS, el.dataset.k) || DEFAULTS.style.color;
       else if (el.tagName === 'SELECT') el.value = v || el.options[0].value;
       else el.value = v === undefined || v === null || v === 0 ? '' : String(v);
     });
@@ -207,6 +207,8 @@
     const pct = (v, d) => (v === '' || v === undefined ? d : Math.max(5, Math.min(100, +v)));
     return {
       color: st.color,
+      guideColor: st.guideColor || DEFAULTS.style.guideColor,
+      guideMode: hostInfo.app === 'illustrator' ? st.guideMode || 'guides' : 'guides',
       weight: Core.toDoc(st.weight || (hostInfo.app === 'photoshop' ? '1px' : '0.5pt'), context()),
       lineOpacity: pct(st.lineOpacity, 70),
       cellOpacity: pct(st.cellOpacity, 20),
@@ -270,7 +272,7 @@
     const scale = Math.min((cw - pad * 2) / box.w, (ch - pad * 2) / box.h);
     const view = { scale, ox: (cw - box.w * scale) / 2 - box.x * scale, oy: (ch - box.h * scale) / 2 - box.y * scale };
     preview = { view, result };
-    GridRender.draw(g, result, view, { color: spec.style.color, weight: 1, cellAlpha: 0.22, lineAlpha: 0.75 }, {
+    GridRender.draw(g, result, view, { color: spec.style.color, guideColor: spec.style.guideColor, weight: 1, cellAlpha: 0.22, lineAlpha: 0.75 }, {
       background: '#f4f4f4', preview: true, cells: true, guides: true,
       baseline: spec.output.baseline, pattern: spec.output.pattern, overlays: spec.output.overlays, zones: spec.output.zones,
     });

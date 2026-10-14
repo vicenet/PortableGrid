@@ -279,12 +279,22 @@
 
                 if (out.guides) {
                     var guides = subGroup(group, 'Guides');
-                    for (var v = 0; v < g.vertical.length; v++) {
-                        line(guides, g.vertical[v], box.y, g.vertical[v], box.y + box.h).guides = true;
-                    }
-                    for (var h = 0; h < g.horizontal.length; h++) {
-                        line(guides, box.x, g.horizontal[h], box.x + box.w, g.horizontal[h]).guides = true;
-                    }
+                    // Real guides take Illustrator's guide colour (set below); coloured lines keep their own.
+                    var asLines = style.guideMode === 'lines';
+                    var gc = PG.hexColor(style.guideColor || '#4AFFFF');
+                    var mark = function (p) {
+                        if (!asLines) {
+                            p.guides = true;
+                            return;
+                        }
+                        p.filled = false;
+                        p.stroked = true;
+                        p.strokeColor = gc;
+                        p.strokeWidth = 0.5;
+                    };
+                    for (var v = 0; v < g.vertical.length; v++) mark(line(guides, g.vertical[v], box.y, g.vertical[v], box.y + box.h));
+                    for (var h = 0; h < g.horizontal.length; h++) mark(line(guides, box.x, g.horizontal[h], box.x + box.w, g.horizontal[h]));
+                    if (asLines) guides.locked = true;
                     counts.guides += g.vertical.length + g.horizontal.length;
                 }
 
@@ -304,10 +314,19 @@
                 }
             }
             if (!layer.pageItems.length) layer.remove();
+            // Illustrator has one guide colour for all documents: apply the chosen one.
+            if (out.guides && style.guideMode !== 'lines' && style.guideColor) setGuideColor(style.guideColor);
             app.redraw();
             return counts;
         });
     };
+
+    function setGuideColor(hex) {
+        var c = PG.hexColor(hex);
+        app.preferences.setRealPreference('Guide/Color/red', c.red / 255);
+        app.preferences.setRealPreference('Guide/Color/green', c.green / 255);
+        app.preferences.setRealPreference('Guide/Color/blue', c.blue / 255);
+    }
 
     // ---------- snap, check, type, artboards ----------
 

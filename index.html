@@ -161,11 +161,20 @@
       <label class="check ai-only" title="Draw baseline, drawing-grid and composition lines as guides instead of coloured lines"><input type="checkbox" data-k="style.asGuides"> Lines as guides</label>
     </div>
     <div class="row style-row">
-      <label title="Colour of cells and lines">Colour<input type="color" data-k="style.color"></label>
+      <label class="ai-only" title="Colour of guides and margins">Guides<input type="color" data-k="style.guideColor"></label>
+      <label title="Colour of cells and lines">Cells &amp; lines<input type="color" data-k="style.color"></label>
+    </div>
+    <div class="row style-row">
       <label>Line weight<input data-k="style.weight" placeholder="0.5pt"></label>
       <label>Lines %<input data-k="style.lineOpacity" type="number" min="5" max="100" placeholder="70"></label>
       <label>Cells %<input data-k="style.cellOpacity" type="number" min="5" max="100" placeholder="20"></label>
     </div>
+    <label class="ai-only">Guides are drawn as
+      <select data-k="style.guideMode">
+        <option value="guides">Illustrator guides (one colour for every guide in Illustrator)</option>
+        <option value="lines">Coloured lines (each grid keeps its own colour)</option>
+      </select>
+    </label>
     <label class="check"><input type="checkbox" id="replace" checked> <span id="replaceLabel">Replace existing grid</span></label>
     <div class="row">
       <button class="primary big" id="draw">Draw grid</button>

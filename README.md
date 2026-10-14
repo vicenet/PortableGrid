@@ -122,6 +122,8 @@ Platforms change their apps, so treat the zones as a close guide.
 - **Export tiles** as numbered PNG/JPEG files: perfect for **Instagram 3 × 3 profile grids** and **seamless carousels**.
 - **Lock rows to the baseline grid** so text lines up across every module.
 - **Drag to adjust**: drag the margins or a gutter in the live preview.
+- **Your guide colour**: pick the colour of guides and margins (sets Illustrator's guide colour), or draw them as
+  coloured lines so every grid keeps its own colour.
 - **Grids live in your document**: settings are saved with the file, each artboard can have its own grid,
   and grids redraw themselves when you resize an artboard.
 - **One undo** removes a whole grid or layout.
