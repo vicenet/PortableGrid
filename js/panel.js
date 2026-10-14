@@ -45,6 +45,10 @@
   let brands = [];
   let lastActiveKey = null;
   let preview = null; // { view, result } of the last preview, for dragging
+  // Background checks (preview, artboard sync) only run while you use the panel, never while you work
+  // on the canvas: requests that reach Illustrator mid-drag can get stuck.
+  let pointerInPanel = false;
+  const panelActive = () => !document.hidden && (pointerInPanel || document.hasFocus());
 
   // ---------- small helpers ----------
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -215,7 +219,7 @@
   }
 
   async function refreshTargets() {
-    if (busy || document.hidden) return;
+    if (busy || !panelActive() || Host.isStalled()) return;
     try {
       const next = await Host.call('targets', { target: $('#target').value });
       const changed = JSON.stringify(next) !== JSON.stringify(targets) || targetError;
@@ -567,7 +571,7 @@
   const sameBox = (a, b) => a && b && ['x', 'y', 'w', 'h'].every((k) => Math.abs(a[k] - b[k]) < 0.01);
 
   async function syncStored() {
-    if (busy || document.hidden || hostInfo.app !== 'illustrator') return;
+    if (busy || !panelActive() || Host.isStalled() || hostInfo.app !== 'illustrator') return;
     let list;
     try { list = await Host.call('storedGrids'); } catch { return; }
     const active = list.find((g) => g.active);
@@ -915,9 +919,17 @@
     setInterval(syncStored, 2000);
 
     window.addEventListener('resize', drawPreview);
-    window.addEventListener('focus', refreshTargets);
+    window.addEventListener('focus', () => { refreshTargets(); syncStored(); });
+    document.addEventListener('mouseenter', () => { pointerInPanel = true; refreshTargets(); syncStored(); });
+    document.addEventListener('mouseleave', () => { pointerInPanel = false; });
+    Host.onStall((isStalled) => {
+      notice(isStalled ? 'Illustrator stopped answering. Save your work and restart Illustrator to reconnect PortableGrid. (Nothing is lost: your grids are saved in the document.)'.replace(/Illustrator/g, hostInfo.app === 'photoshop' ? 'Photoshop' : 'Illustrator') : '');
+      if (!isStalled) status('Reconnected.', 'ok');
+    });
+    // While stalled, a cheap check notices when the host answers again.
+    setInterval(() => { if (Host.isStalled()) Host.call('ping').catch(() => {}); }, 10000);
     // Keep the preview in step with the active document, artboard and selection.
-    setInterval(refreshTargets, 1500);
+    setInterval(refreshTargets, 2000);
   }
 
   async function start() {
@@ -947,7 +959,7 @@
       setTimeout(checkForUpdate, 3000);
       // The document's resolution (Photoshop) can change between documents.
       setInterval(async () => {
-        if (busy || document.hidden) return;
+        if (busy || !panelActive() || Host.isStalled()) return;
         try {
           const i = await Host.call('info');
           if (i.ppi && i.ppi !== hostInfo.ppi) { hostInfo.ppi = i.ppi; drawPreview(); }

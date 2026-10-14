@@ -5,10 +5,35 @@ const Host = (() => {
   const node = typeof require === 'function' ? require : null;
   const info = { app: null, root: null };
 
-  function evalRaw(script) {
-    return new Promise((resolve, reject) => {
+  // One script at a time: overlapping evalScript calls can make Illustrator drop a reply, and every later
+  // call then waits behind it. Each call also has a time limit, so the panel never hangs on a lost reply.
+  let queue = Promise.resolve();
+  let stalled = false;
+  const listeners = [];
+  const stalledMessage = () => {
+    const app = info.app === 'photoshop' ? 'Photoshop' : 'Illustrator';
+    return `${app} stopped answering PortableGrid. Save your work, then restart ${app} to reconnect.`;
+  };
+
+  function evalRaw(script, timeoutMs = 30000) {
+    const run = () => new Promise((resolve, reject) => {
       if (!cep) return reject(new Error('Not running inside Illustrator or Photoshop.'));
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        stalled = true;
+        listeners.forEach((fn) => fn(true));
+        reject(new Error(stalledMessage()));
+      }, timeoutMs);
       cep.evalScript(script, (result) => {
+        if (done) return; // answered after the time limit: too late, but the connection works again
+        done = true;
+        clearTimeout(timer);
+        if (stalled) {
+          stalled = false;
+          listeners.forEach((fn) => fn(false));
+        }
         if (result === 'EvalScript error.') {
           reject(new Error('Host script error - check the .jsx files for a syntax error.'));
         } else {
@@ -16,7 +41,14 @@ const Host = (() => {
         }
       });
     });
+    const p = queue.then(run, run);
+    queue = p.catch(() => {});
+    return p;
   }
+
+  // Called with true when the host stops answering, and false when it answers again.
+  const onStall = (fn) => listeners.push(fn);
+  const isStalled = () => stalled;
 
   function extensionRoot() {
     const url = decodeURI(cep.getSystemPath('extension'));
@@ -36,8 +68,13 @@ const Host = (() => {
     return info;
   }
 
+  // Long jobs (drawing many artboards, layouts, exports) get more time than quick lookups.
+  const SLOW = { draw: 180000, layout: 180000, exportTiles: 600000, split: 120000, arrange: 120000, check: 60000, snap: 60000 };
+
   async function call(name, arg = {}) {
-    const raw = await evalRaw(`PortableGrid.call(${JSON.stringify(name)}, ${JSON.stringify(JSON.stringify(arg))})`);
+    // Once the host has stopped answering, fail at once instead of queueing more calls behind it.
+    if (stalled && name !== 'ping') throw new Error(stalledMessage());
+    const raw = await evalRaw(`PortableGrid.call(${JSON.stringify(name)}, ${JSON.stringify(JSON.stringify(arg))})`, SLOW[name] || 15000);
     let res;
     try {
       res = JSON.parse(raw);
@@ -64,5 +101,5 @@ const Host = (() => {
     return r.err === 0 && r.data && r.data.length ? r.data[0] : null;
   }
 
-  return { info, init, call, chooseFile, chooseFolder, revealFolder, node };
+  return { info, init, call, chooseFile, chooseFolder, revealFolder, node, onStall, isStalled };
 })();
